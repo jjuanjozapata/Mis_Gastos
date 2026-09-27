@@ -14,9 +14,13 @@ const ASSETS = [
 self.addEventListener('install', event => {
     self.skipWaiting();
     event.waitUntil(
-        caches.open(CACHE_NAME)
-            .then(cache => cache.addAll(ASSETS))
-            .catch(err => console.error('Fallo en SW al cachear ASSETS:', err))
+        caches.open(CACHE_NAME).then(cache => {
+            return Promise.allSettled(
+                ASSETS.map(asset => 
+                    cache.add(asset).catch(err => console.warn(`Aviso: No se pudo precachear ${asset}:`, err))
+                )
+            );
+        })
     );
 });
 
@@ -52,7 +56,7 @@ self.addEventListener('fetch', event => {
                     caches.open(CACHE_NAME).then(cache => cache.put(event.request, resToCache));
                     return response;
                 })
-                .catch(() => caches.match('/index.html') || new Response('Offline', { status: 503, headers: { 'Content-Type': 'text/plain' } }))
+                .catch(() => caches.match('/index.html').then(cachedRes => cachedRes || new Response('Offline', { status: 503, headers: { 'Content-Type': 'text/plain' } })))
         );
         return;
     }
@@ -60,10 +64,10 @@ self.addEventListener('fetch', event => {
     event.respondWith(
         caches.match(event.request).then(cachedResponse => {
             if (cachedResponse) {
-                // Implementación correcta de Stale-While-Revalidate en 2do plano sin bloquear la UI
+                // Implementación estricta de Stale-While-Revalidate en 2do plano sin bloquear UI
                 event.waitUntil(
                     fetch(event.request).then(networkResponse => {
-                        if (networkResponse && networkResponse.status === 200) {
+                        if (networkResponse && networkResponse.ok && networkResponse.type !== 'error') {
                             caches.open(CACHE_NAME).then(cache => cache.put(event.request, networkResponse));
                         }
                     }).catch(() => {})
@@ -71,7 +75,7 @@ self.addEventListener('fetch', event => {
                 return cachedResponse;
             }
             return fetch(event.request).then(networkResponse => {
-                if (!networkResponse || networkResponse.status !== 200) return networkResponse;
+                if (!networkResponse || !networkResponse.ok || networkResponse.type === 'error') return networkResponse;
                 const resToCache = networkResponse.clone();
                 caches.open(CACHE_NAME).then(cache => cache.put(event.request, resToCache));
                 return networkResponse;

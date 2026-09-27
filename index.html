@@ -783,15 +783,24 @@
 
     <!-- JavaScript Principal -->
     <script>
+        // [CISO] Inicialización segura mediante variables de entorno Vite con fallback perimetral
+        const SUPABASE_ANON_KEY = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_SUPABASE_ANON_KEY) 
+    ? import.meta.env.VITE_SUPABASE_ANON_KEY 
+    : (window.ENV_SUPABASE_KEY || 'INSERTA_AQUI_TU_SUPABASE_ANON_KEY');
+
+if (SUPABASE_ANON_KEY === 'INSERTA_AQUI_TU_SUPABASE_ANON_KEY') {
+    console.warn('[CISO Security Warning] La clave anónima de Supabase utiliza el valor por defecto.');
+}
+        
         const db = supabase.createClient(
             'https://znszebnjcgjfzxvnexxd.supabase.co', 
             SUPABASE_ANON_KEY,
             {
                 auth: {
-                storage: window.localStorage,
-                autoRefreshToken: true,
-                persistSession: true
-            }
+                    storage: window.localStorage,
+                    autoRefreshToken: true,
+                    persistSession: true
+                }
             }
         );
 
@@ -838,15 +847,17 @@
             if (nuevaMoneda === 'PEN') locale = 'es-PE';
             formateadorRaw = new Intl.NumberFormat(locale, { style: 'currency', currency: nuevaMoneda, maximumFractionDigits: 0 });
             formateadorNumerico = new Intl.NumberFormat(locale);
-            document.getElementById('simbolo-moneda-plan')?.textContent = nuevaMoneda === 'USD' ? '$' : (nuevaMoneda === 'PEN' ? 'S/.' : '$');
+            const simEl = document.getElementById('simbolo-moneda-plan');
+            if (simEl) simEl.textContent = nuevaMoneda === 'USD' ? '$' : (nuevaMoneda === 'PEN' ? 'S/.' : '$');
             actualizarPantalla();
             if (!document.getElementById('pantalla-dashboard')?.classList.contains('hidden')) {
                 cargarEstadisticas();
             }
         }
 
-        document.getElementById('selector-moneda')?.value = monedaActual;
-        document.getElementById('selector-moneda')?.addEventListener('change', (e) => {
+        const selMoneda = document.getElementById('selector-moneda');
+        if (selMoneda) selMoneda.value = monedaActual;
+        selMoneda?.addEventListener('change', (e) => {
             actualizarFormatoMoneda(e.target.value);
             mostrarToast('Moneda actualizada con éxito');
         });
@@ -869,13 +880,14 @@
             let queuePlanes = leerStorageSeguro('offline_queue_planes', []);
             
             if (queue.length === 0 && queuePlanes.length === 0) return;
-            const { data: { session } } = await db.auth.getSession();
-            if (!session) return;
-
-            mostrarToast('🔄 Sincronizando datos pendientes con la nube...');
-            let huboSincronizacion = false;
 
             try {
+                const { data: { session } } = await db.auth.getSession();
+                if (!session) return;
+
+                mostrarToast('🔄 Sincronizando datos pendientes con la nube...');
+                let huboSincronizacion = false;
+
                 if (queue.length > 0) {
                     const itemsConUsuario = queue.map(item => ({ ...item, user_id: session.user.id }));
                     const idsProcesados = itemsConUsuario.map(i => i.id);
@@ -922,14 +934,19 @@
                     cargarPlanes();
                 }
             } catch (error) {
-                console.warn('Sincronización pausada por inestabilidad de red:', error.message);
+                console.warn('[CISO Guard] Sincronización pausada por inestabilidad de red o sesión:', error.message);
             }
         }
            
         async function verificarEstadoSesion() {
-            const { data: sessionData, error: sessionError } = await db.auth.getSession();
-            if (error) console.warn('Sesión no disponible:', error.message);
-            actualizarUIIngreso(data?.session || null);
+            try {
+                const { data: sessionData, error: sessionError } = await db.auth.getSession();
+                if (sessionError) throw sessionError;
+                actualizarUIIngreso(sessionData?.session || null);
+            } catch (error) {
+                console.warn('[CISO Security Guard] Red inestable al validar sesión inicial:', error.message);
+                actualizarUIIngreso(null);
+            }
         }
 
         function actualizarUIIngreso(session) {
@@ -979,11 +996,11 @@
 
         document.getElementById('btn-bienvenida-anonimo')?.addEventListener('click', async () => {
             const { data: anonData, error: anonError } = await db.auth.signInAnonymously();
-            if (error) {
-                mostrarToast('Error al entrar: ' + error.message, 'error');
+            if (anonError) {
+                mostrarToast('Error al entrar: ' + anonError.message, 'error');
             } else {
                 mostrarToast('¡Modo invitado activado! Explora libremente.');
-                actualizarUIIngreso(data.session);
+                actualizarUIIngreso(anonData.session);
                 cargarEstadisticas();
                 cargarPlanes();
             }
@@ -1023,10 +1040,10 @@
 
             try {
                 const { data: loginData, error: loginError } = await db.auth.signInWithPassword({ email, password });
-                if (error) throw error;
+                if (loginError) throw loginError;
                 mostrarToast('¡Bienvenido de vuelta!');
                 passwordInput.value = '';
-                actualizarUIIngreso(data.session);
+                actualizarUIIngreso(loginData.session);
                 cargarEstadisticas();
                 cargarPlanes();
             } catch (err) {
@@ -1078,16 +1095,16 @@
                 
                 if (session && session.user && session.user.is_anonymous) {
                     const { error: updateError } = await db.auth.updateUser({ email, password });
-                    if (error) throw error;
+                    if (updateError) throw updateError;
                     mostrarToast('¡Progreso guardado! Tu cuenta oficial está lista.');
                     passwordInput.value = '';
                     verificarEstadoSesion();
                 } else {
                     const { data: signUpData, error: signUpError } = await db.auth.signUp({ email, password });
-                    if (error) throw error;
+                    if (signUpError) throw signUpError;
                     mostrarToast('¡Cuenta creada con éxito!');
                     passwordInput.value = '';
-                    actualizarUIIngreso(data?.session || null);
+                    actualizarUIIngreso(signUpData?.session || null);
                     cargarEstadisticas();
                     cargarPlanes();
                 }
@@ -1104,7 +1121,7 @@
         document.getElementById('btn-cerrar-sesion')?.addEventListener('click', async () => {
             try {
                 const { error: signOutError } = await db.auth.signOut();
-                if (error) throw error;
+                if (signOutError) throw signOutError;
                 
                 // [CISO] Purga absoluta de memoria volátil cross-tenant para evitar resurrección de datos
                 localStorage.removeItem('categorias_cache');
@@ -1186,7 +1203,7 @@
                             const esForanea = id.startsWith('fallback') || typeof id !== 'string' || id.length < 15;
                             if (!esForanea) {
                                 const { error: delCatError } = await db.from('categorias').delete().eq('id', id).eq('user_id', session.user.id);
-                                if (error) throw new Error(`Fallo RLS al borrar: ${error.message}`);
+                                if (delCatError) throw new Error(`Fallo RLS al borrar: ${delCatError.message}`);
                             }
                         }
                         
@@ -1362,17 +1379,34 @@
             
             if (periodoGuardado && periodoGuardado !== periodoActual) {
                 if (ultimoBalanceCalculado > 0) {
-                    document.getElementById('texto-rollover')?.textContent = `Tienes un saldo restante de ${formatearMoneda(ultimoBalanceCalculado)} del mes anterior. ¿Qué deseas hacer con este dinero?`;
-                    document.getElementById('modal-rollover')?.classList.remove('hidden');
-                    document.getElementById('modal-rollover')?.classList.add('flex');
+                    const elTexto = document.getElementById('texto-rollover');
+                    const elModal = document.getElementById('modal-rollover');
+                    if (elTexto) elTexto.textContent = `Tienes un saldo restante de ${formatearMoneda(ultimoBalanceCalculado)} del mes anterior. ¿Qué deseas hacer con este dinero?`;
+                    if (elModal) {
+                        elModal.classList.remove('hidden');
+                        elModal.classList.add('flex');
+                    }
                 }
 
-                const { data: { session } } = await db.auth.getSession();
-                if (session) {
-                    const { data: planes, error: errPlanes } = await db.from('planes').select('*').eq('user_id', session.user.id).eq('tipo', 'limite').eq('auto_renovar', true);
-                    if (planes && planes.length > 0) {
-                        mostrarToast(`📅 Nuevo mes detectado: Tienes ${planes.length} límites fijos listos para el ciclo.`);
+                try {
+                    const { data, error: errSession } = await db.auth.getSession();
+                    if (errSession) throw errSession;
+                    
+                    const session = data?.session;
+                    if (session) {
+                        const { data: planes, error: errPlanes } = await db.from('planes')
+                            .select('*')
+                            .eq('user_id', session.user.id)
+                            .eq('tipo', 'limite')
+                            .eq('auto_renovar', true);
+                        if (errPlanes) throw errPlanes;
+                        
+                        if (planes && planes.length > 0) {
+                            mostrarToast(`📅 Nuevo mes detectado: Tienes ${planes.length} límites fijos listos para el ciclo.`);
+                        }
                     }
+                } catch (errorSupabase) {
+                    console.warn('[CISO Alert] Pausa de validación en rollover por red:', errorSupabase.message);
                 }
             }
             localStorage.setItem('mes_actual_registro', periodoActual);
@@ -1518,19 +1552,23 @@
 
         document.getElementById('btn-copiar-atajo')?.addEventListener('click', () => {
             navigator.clipboard.writeText(window.location.href);
-            document.getElementById('btn-copiar-texto')?.textContent = '¡Enlace copiado al portapapeles!';
+            const btnCopiar = document.getElementById('btn-copiar-texto');
+            if (btnCopiar) btnCopiar.textContent = '¡Enlace copiado al portapapeles!';
             setTimeout(() => {
-                document.getElementById('btn-copiar-texto')?.textContent = 'Copiar Enlace para iOS';
+                const btnCopiar2 = document.getElementById('btn-copiar-texto');
+                if (btnCopiar2) btnCopiar2.textContent = 'Copiar Enlace para iOS';
             }, 2500);
             mostrarToast('Enlace listo para tu atajo');
         });
 
-        document.getElementById('btn-privacidad')?.textContent = modoPrivacidad ? '🔒' : '👁️';
+        const btnPriv = document.getElementById('btn-privacidad');
+        if (btnPriv) btnPriv.textContent = modoPrivacidad ? '🔒' : '👁️';
 
-        document.getElementById('btn-privacidad')?.addEventListener('click', () => {
+        btnPriv?.addEventListener('click', () => {
             modoPrivacidad = !modoPrivacidad;
             localStorage.setItem('modo_privacidad_gastos', modoPrivacidad);
-            document.getElementById('btn-privacidad')?.textContent = modoPrivacidad ? '🔒' : '👁️';
+            const btnPriv2 = document.getElementById('btn-privacidad');
+            if (btnPriv2) btnPriv2.textContent = modoPrivacidad ? '🔒' : '👁️';
             actualizarPantalla();
             if (!document.getElementById('pantalla-dashboard')?.classList.contains('hidden')) {
                 cargarEstadisticas();
@@ -1539,8 +1577,9 @@
         });
 
         const mesActualIndex = new Date().getMonth();
-        document.getElementById('selector-mes-excel')?.value = mesActualIndex;
-        document.getElementById('selector-mes-excel')?.addEventListener('change', cargarEstadisticas);
+        const selMes = document.getElementById('selector-mes-excel');
+        if (selMes) selMes.value = mesActualIndex;
+        selMes?.addEventListener('change', cargarEstadisticas);
 
         let monto = '0';
 let expresionCalculadora = '';
@@ -1609,9 +1648,11 @@ let graficoInstancia = null;
         let cuentaGuardada = localStorage.getItem('cuenta_mis_gastos');
         let cuentaIndex = listaCuentas.includes(cuentaGuardada) ? listaCuentas.indexOf(cuentaGuardada) : 0;
         let cuentaActual = listaCuentas[cuentaIndex];
-        document.getElementById('btn-cuenta')?.textContent = cuentaActual;
+        const btnCta = document.getElementById('btn-cuenta');
+        if (btnCta) btnCta.textContent = cuentaActual;
 
-        document.getElementById('fecha-actual')?.textContent = new Intl.DateTimeFormat('es-ES', { weekday: 'long', day: 'numeric', month: 'short' }).format(new Date());
+        const elFecha = document.getElementById('fecha-actual');
+        if (elFecha) elFecha.textContent = new Intl.DateTimeFormat('es-ES', { weekday: 'long', day: 'numeric', month: 'short' }).format(new Date());
 
         function mostrarToast(mensaje, tipo = 'exito') {
             const container = document.getElementById('toast-container');
@@ -1627,6 +1668,7 @@ let graficoInstancia = null;
             }, 3000);
         }
 
+        // [PERFORMANCE] Registro único y seguro del plugin de texto central
         const centerTextPlugin = {
             id: 'centerText',
             beforeDraw: function(chart) {
@@ -1648,7 +1690,11 @@ let graficoInstancia = null;
                 ctx.restore();
             }
         };
-        Chart.register(centerTextPlugin);
+        
+        // Evitar registro duplicado si la vista se recarga sin purgar memoria
+        if (typeof Chart !== 'undefined' && !Chart.registry.plugins.get('centerText')) {
+            Chart.register(centerTextPlugin);
+        }
 
         document.getElementById('btn-cuenta')?.addEventListener('click', () => {
             cuentaIndex = (cuentaIndex + 1) % listaCuentas.length;
@@ -1659,7 +1705,8 @@ let graficoInstancia = null;
         });
 
         function actualizarPantalla() { 
-            document.getElementById('monto-display')?.textContent = formatearMoneda(parseInt(monto || '0')); 
+            const mDisp = document.getElementById('monto-display');
+            if (mDisp) mDisp.textContent = formatearMoneda(parseInt(monto || '0')); 
         }
 
         document.querySelectorAll('.num-btn').forEach(btn => {
@@ -1705,7 +1752,14 @@ let graficoInstancia = null;
                 mostrarToast('Digita un valor mayor a cero.', 'error');
                 return;
             }
-            document.getElementById('flujo-monto-display')?.textContent = formatearMoneda(parseInt(monto));
+            // Estado base garantizado al abrir
+            tipoActual = 'gasto';
+            tipoSubCatActual = 'variable';
+            document.getElementById('input-buscar-categoria').value = '';
+            
+            const flMonto = document.getElementById('flujo-monto-display');
+            if (flMonto) flMonto.textContent = formatearMoneda(parseInt(monto));
+            
             document.getElementById('modal-flujo')?.classList.remove('hidden');
             document.getElementById('modal-flujo')?.classList.add('flex');
             document.getElementById('flujo-paso-1')?.classList.remove('hidden');
@@ -1719,6 +1773,9 @@ let graficoInstancia = null;
         function cerrarFlujo() {
             document.getElementById('modal-flujo')?.classList.add('hidden');
             document.getElementById('modal-flujo')?.classList.remove('flex');
+            // Restaurar visualmente los botones de filtro a su estado por defecto
+            document.getElementById('filtro-cat-variable').className = "py-2 px-3 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-bold transition-all cursor-pointer";
+            document.getElementById('filtro-cat-fijo').className = "py-2 px-3 rounded-xl bg-slate-800 border border-slate-700 text-slate-400 text-xs font-bold transition-all cursor-pointer";
         }
 
         document.getElementById('btn-cerrar-flujo')?.addEventListener('click', cerrarFlujo);
@@ -1754,23 +1811,22 @@ let graficoInstancia = null;
             const label = document.getElementById('flujo-tipo-label');
 
             if (tipo === 'gasto') {
-                seccionFiltros.classList.remove('hidden');
-                label.textContent = '📉 Registrando Gasto / Factura';
+                if (seccionFiltros) seccionFiltros.classList.remove('hidden');
+                if (label) label.textContent = '📉 Registrando Gasto / Factura';
             } else if (tipo === 'ingreso') {
-                seccionFiltros.classList.add('hidden');
-                label.textContent = '📈 Registrando Ingreso';
+                if (seccionFiltros) seccionFiltros.classList.add('hidden');
+                if (label) label.textContent = '📈 Registrando Ingreso';
             } else if (tipo === 'meta') {
-                seccionFiltros.classList.add('hidden');
-                label.textContent = '🎯 Aportar a Meta de Ahorro';
+                if (seccionFiltros) seccionFiltros.classList.add('hidden');
+                if (label) label.textContent = '🎯 Aportar a Meta de Ahorro';
             } else if (tipo === 'deuda') {
-                seccionFiltros.classList.add('hidden');
-                label.textContent = '💳 Abonar a Crédito / Deuda';
+                if (seccionFiltros) seccionFiltros.classList.add('hidden');
+                if (label) label.textContent = '💳 Abonar a Crédito / Deuda';
             }
 
             document.getElementById('flujo-paso-1')?.classList.add('hidden');
             document.getElementById('flujo-paso-1')?.classList.remove('flex');
             document.getElementById('flujo-paso-2')?.classList.remove('hidden');
-            document.getElementById('flujo-paso-2')?.classList.remove('flex');
             document.getElementById('flujo-paso-2')?.classList.add('flex');
             renderizarCategoriasFlujo();
         }
@@ -1789,10 +1845,20 @@ let graficoInstancia = null;
                     
                     const { data: queryData, error: queryError } = await query;
                     
-                    if (!error && data) {
+                    if (!queryError && queryData) {
                         let idsEliminadas = JSON.parse(localStorage.getItem('categorias_eliminadas_ids') || '[]');
-                        // La base de datos es la verdad absoluta para deletes reales, idsEliminadas cubre defaults
-                        const categoriasFiltradas = data.filter(c => !idsEliminadas.includes(c.id));
+                        
+                        // [INYECCIÓN] Deduplicación asimétrica para bloquear duplicados en dispositivos nuevos
+                        const mapaUnicas = new Map();
+                        [...queryData]
+                            .sort((a, b) => (b.user_id ? 1 : 0) - (a.user_id ? 1 : 0)) // Prioridad a categoría de usuario
+                            .forEach(c => {
+                                const hash = c.nombre.toLowerCase().trim();
+                                if (!mapaUnicas.has(hash)) mapaUnicas.set(hash, c);
+                            });
+                        const categoriasDeduplicadas = Array.from(mapaUnicas.values());
+
+                        const categoriasFiltradas = categoriasDeduplicadas.filter(c => !idsEliminadas.includes(c.id));
                         localStorage.setItem('categorias_cache', JSON.stringify(categoriasFiltradas));
                     }
                 }
@@ -1890,15 +1956,11 @@ let graficoInstancia = null;
 
                 const btn = document.createElement('button');
                 btn.type = "button";
-                btn.className = "flex-1 flex flex-col items-center justify-center p-3 bg-slate-800 rounded-2xl active:bg-emerald-600 active:scale-95 transition-all border border-slate-700 shadow-md min-h-[85px] cursor-pointer";
+                // Clase trazadora y variables inmutables en data attributes
+                btn.className = "btn-flujo-cat flex-1 flex flex-col items-center justify-center p-3 bg-slate-800 rounded-2xl active:bg-emerald-600 active:scale-95 transition-all border border-slate-700 shadow-md min-h-[85px] cursor-pointer";
+                btn.dataset.catid = escapeHTML(cat.id);
+                btn.dataset.catnombre = escapeHTML(cat.nombre);
                 btn.innerHTML = `<span class="text-2xl mb-2">${escapeHTML(cat.icono)}</span><span class="text-[9px] font-bold text-slate-300 uppercase tracking-wider text-center leading-tight">${escapeHTML(cat.nombre)}</span>`;
-                btn?.addEventListener('click', () => {
-                    if (cat.nombre.toUpperCase().includes('OTROS') || cat.nombre.toUpperCase().includes('EXTRA') || cat.nombre.toUpperCase().includes('MEKATO')) {
-                        abrirModal(cat?.id);
-                    } else {
-                        guardarTransaccion(cat?.id, '');
-                    }
-                });
                 wrapper.appendChild(btn);
 
                 fragmentoCategorias.appendChild(wrapper);
@@ -1906,71 +1968,39 @@ let graficoInstancia = null;
 
             const btnNuevaCat = document.createElement('button');
             btnNuevaCat.type = "button";
-            btnNuevaCat.className = "flex flex-col items-center justify-center p-3 bg-slate-800/40 rounded-2xl active:bg-slate-700 border border-dashed border-emerald-500/40 shadow-sm min-h-[85px] cursor-pointer";
+            btnNuevaCat.className = "btn-flujo-nueva flex flex-col items-center justify-center p-3 bg-slate-800/40 rounded-2xl active:bg-slate-700 border border-dashed border-emerald-500/40 shadow-sm min-h-[85px] cursor-pointer";
             btnNuevaCat.innerHTML = `<span class="text-2xl mb-1 text-emerald-400 font-light">+</span><span class="text-[9px] font-bold text-emerald-400 uppercase tracking-wider text-center">Nueva</span>`;
-            btnNuevaCat?.addEventListener('click', abrirModalNuevaCategoria);
             fragmentoCategorias.appendChild(btnNuevaCat);
             
             contenedor.appendChild(fragmentoCategorias);
-        }
 
-        async function aplicarAporteMeta(plan) {
-            const valorAporte = parseInt(monto);
-            
-            try {
-                const { data: { session }, error: errAuth } = await db.auth.getSession();
-                if (errAuth || !session) throw new Error('Inicia sesión para gestionar metas');
-
-                const nuevoAcumulado = parseFloat(plan.monto_acumulado || 0) + valorAporte;
-                let categorias = JSON.parse(localStorage.getItem('categorias_cache') || '[]');
-                const catAhorro = categorias.find(c => c.nombre.toLowerCase().includes('ahorro') || c.nombre.toLowerCase().includes('meta')) || categorias[0];
-
-                const txPayload = {
-                    id: window.crypto && window.crypto.randomUUID ? window.crypto.randomUUID() : Date.now().toString(),
-                    monto: valorAporte,
-                    categoria_id: catAhorro ? catAhorro.id : null,
-                    cuenta: cuentaActual,
-                    fecha: new Date().toISOString(),
-                    notas: `Aporte a meta: ${plan.titulo}`,
-                    user_id: session.user.id
-                };
-
-                if (navigator.onLine) {
-                    const { error: errPlan } = await db.from('planes').update({ monto_acumulado: nuevoAcumulado }).eq('id', plan?.id);
-                    if (errPlan) throw new Error('Fallo al actualizar el acumulado: ' + errPlan.message);
-                    
-                    if (catAhorro) {
-                        const { error: errTx } = await db.from('transacciones').insert([txPayload]);
-                        if (errTx) throw new Error('Fallo al guardar la transacción contable: ' + errTx.message);
+            // [NUEVO] Patrón Singleton Global: Un único listener en la memoria de Chrome
+            if (!contenedor.dataset.listenerFlujoActivo) {
+                contenedor.addEventListener('click', (e) => {
+                    if (e.target.closest('.btn-flujo-nueva')) {
+                        abrirModalNuevaCategoria();
+                        return;
                     }
-                } else {
-                    let queueTx = JSON.parse(localStorage.getItem('offline_queue') || '[]');
-                    queueTx.push(txPayload);
-                    localStorage.setItem('offline_queue', JSON.stringify(queueTx));
-
-                    let queuePlanes = JSON.parse(localStorage.getItem('offline_queue_planes') || '[]');
-                    queuePlanes.push({ planId: plan?.id, nuevoAcumulado });
-                    localStorage.setItem('offline_queue_planes', JSON.stringify(queuePlanes));
-                    mostrarToast('Aporte encolado offline. Se sincronizará al conectar.');
-                }
-
-                mostrarToast(`🎯 Aporte de ${formatearMoneda(valorAporte)} sumado a "${plan.titulo}"`);
-                cerrarFlujo();
-                limpiar();
-                cargarPlanes();
-                cargarEstadisticas();
-            } catch (err) {
-                console.error('[CISO Audit] Cancelando aporte por falla crítica:', err.message);
-                mostrarToast(err.message, 'error');
+                    const btnCat = e.target.closest('.btn-flujo-cat');
+                    if (btnCat && btnCat.dataset.catid) {
+                        const nombreUpper = (btnCat.dataset.catnombre || '').toUpperCase();
+                        if (nombreUpper.includes('OTROS') || nombreUpper.includes('EXTRA') || nombreUpper.includes('MEKATO')) {
+                            abrirModal(btnCat.dataset.catid);
+                        } else {
+                            guardarTransaccion(btnCat.dataset.catid, '');
+                        }
+                    }
+                });
+                contenedor.dataset.listenerFlujoActivo = 'true';
             }
         }
 
-        let categoriaEdicionId = null;
+       
 
         function abrirModalEditarPresupuesto(catId, catNombre, presupuestoActual) {
             categoriaEdicionId = catId;
-            document.getElementById('label-cat-editar-presupuesto')?.textContent = `Categoría: ${catNombre}`;
-            document.getElementById('input-nuevo-presupuesto-cat')?.value = formateadorNumerico.format(parseInt(presupuestoActual || 0));
+            const lblC = document.getElementById('label-cat-editar-presupuesto'); if (lblC) lblC.textContent = `Categoría: ${catNombre}`;
+            const inC = document.getElementById('input-nuevo-presupuesto-cat'); if (inC) inC.value = formateadorNumerico.format(parseInt(presupuestoActual || 0));
             
             const modal = document.getElementById('modal-editar-presupuesto');
             modal.classList.remove('hidden');
@@ -2028,8 +2058,8 @@ let graficoInstancia = null;
 
                 if (planExistente) {
                     const { error: errUpdate } = await db.from('planes').update({ monto: nuevoMonto }).eq('id', planExistente?.id);
-                    if (error) {
-                        mostrarToast('Error al actualizar presupuesto: ' + error.message, 'error');
+                    if (errUpdate) {
+                        mostrarToast('Error al actualizar presupuesto: ' + errUpdate.message, 'error');
                         return;
                     }
                 } else {
@@ -2046,8 +2076,8 @@ let graficoInstancia = null;
                         auto_renovar: true,
                         user_id: session.user.id
                     }]);
-                    if (error) {
-                        mostrarToast('Error al crear límite: ' + error.message, 'error');
+                    if (insPlanError) {
+                        mostrarToast('Error al crear límite: ' + insPlanError.message, 'error');
                         return;
                     }
                 }
@@ -2058,8 +2088,71 @@ let graficoInstancia = null;
             });
         }
 
+       async function aplicarAporteMeta(plan) {
+            const valorAporte = parseInt(monto);
+            
+            if (isNaN(valorAporte) || valorAporte <= 0) {
+                mostrarToast('Digita un monto mayor a cero en el teclado primero', 'error');
+                cerrarFlujo();
+                return;
+            }
+            
+            try {
+                const { data: { session }, error: errAuth } = await db.auth.getSession();
+                if (errAuth || !session) throw new Error('Inicia sesión para gestionar metas');
+
+                const nuevoAcumulado = parseFloat(plan.monto_acumulado || 0) + valorAporte;
+                let categorias = JSON.parse(localStorage.getItem('categorias_cache') || '[]');
+                const catAhorro = categorias.find(c => c.nombre.toLowerCase().includes('ahorro') || c.nombre.toLowerCase().includes('meta')) || categorias[0];
+
+                const txPayload = {
+                    id: window.crypto && window.crypto.randomUUID ? window.crypto.randomUUID() : Date.now().toString(),
+                    monto: valorAporte,
+                    categoria_id: catAhorro ? catAhorro.id : null,
+                    cuenta: cuentaActual,
+                    fecha: new Date().toISOString(),
+                    notas: `Aporte a meta: ${plan.titulo}`,
+                    user_id: session.user.id
+                };
+
+                if (navigator.onLine) {
+                    const { error: errPlan } = await db.from('planes').update({ monto_acumulado: nuevoAcumulado }).eq('id', plan?.id);
+                    if (errPlan) throw new Error('Fallo al actualizar el acumulado: ' + errPlan.message);
+                    
+                    if (catAhorro) {
+                        const { error: errTx } = await db.from('transacciones').insert([txPayload]);
+                        if (errTx) throw new Error('Fallo al guardar la transacción contable: ' + errTx.message);
+                    }
+                } else {
+                    let queueTx = JSON.parse(localStorage.getItem('offline_queue') || '[]');
+                    queueTx.push(txPayload);
+                    localStorage.setItem('offline_queue', JSON.stringify(queueTx));
+
+                    let queuePlanes = JSON.parse(localStorage.getItem('offline_queue_planes') || '[]');
+                    queuePlanes.push({ planId: plan?.id, nuevoAcumulado });
+                    localStorage.setItem('offline_queue_planes', JSON.stringify(queuePlanes));
+                    mostrarToast('Aporte encolado offline. Se sincronizará al conectar.');
+                }
+
+                mostrarToast(`🎯 Aporte de ${formatearMoneda(valorAporte)} sumado a "${plan.titulo}"`);
+                cerrarFlujo();
+                limpiar();
+                cargarPlanes();
+                cargarEstadisticas();
+            } catch (err) {
+                console.error('[CISO Audit] Cancelando aporte por falla crítica:', err.message);
+                mostrarToast(err.message, 'error');
+            }
+        }
+
         async function aplicarAbonoDeuda(plan) {
             const valorAbono = parseInt(monto);
+            
+            if (isNaN(valorAbono) || valorAbono <= 0) {
+                mostrarToast('Digita un monto mayor a cero en el teclado primero', 'error');
+                cerrarFlujo();
+                return;
+            }
             
             try {
                 const { data: { session }, error: errAuth } = await db.auth.getSession();
@@ -2099,7 +2192,10 @@ let graficoInstancia = null;
                 }
 
                 mostrarToast(`💳 Abono de ${formatearMoneda(valorAbono)} aplicado a "${plan.titulo}"`);
-                cerrarFlujo(); limpiar(); cargarPlanes(); cargarEstadisticas();
+                cerrarFlujo(); 
+                limpiar(); 
+                cargarPlanes(); 
+                cargarEstadisticas();
             } catch (err) {
                 console.error('[CISO Audit] Cancelando abono por falla crítica:', err.message);
                 mostrarToast(err.message, 'error');
@@ -2112,7 +2208,7 @@ let graficoInstancia = null;
 
         function abrirModalEditarCategoria(cat) {
             categoriaEditandoId = cat?.id;
-            document.getElementById('input-editar-cat-nombre')?.value = cat.nombre;
+            const iec = document.getElementById('input-editar-cat-nombre'); if (iec) iec.value = cat.nombre;
             tipoEditarCatEsFijo = Boolean(cat.es_fijo);
             actualizarBotonesTipoEditarCat();
 
@@ -2213,7 +2309,7 @@ let graficoInstancia = null;
         });
 
         function abrirModalNuevaCategoria() {
-            document.getElementById('input-nueva-cat-nombre')?.value = '';
+            const inc = document.getElementById('input-nueva-cat-nombre'); if (inc) inc.value = '';
             tipoNuevaCatEsFijo = (tipoSubCatActual === 'fijo');
             actualizarBotonesTipoNuevaCat();
             
@@ -2234,20 +2330,34 @@ let graficoInstancia = null;
             });
 
             const gridEmojis = document.getElementById('selector-iconos-cat');
-            gridEmojis.innerHTML = '';
-            listaEmojisPopulares.forEach((emoji, i) => {
-                const b = document.createElement('button');
-                b.type = 'button';
-                b.className = `p-2 rounded-xl text-xl flex items-center justify-center transition-all ${i === 0 ? 'bg-emerald-500/20 border border-emerald-500' : 'bg-slate-900 border border-slate-800'} cursor-pointer`;
-                b.textContent = emoji;
-                b?.addEventListener('click', () => {
-                    gridEmojis.querySelectorAll('button').forEach(btn => btn.className = 'p-2 rounded-xl text-xl flex items-center justify-center bg-slate-900 border border-slate-800');
-                    b.className = 'p-2 rounded-xl text-xl flex items-center justify-center bg-emerald-500/20 border border-emerald-500';
-                    iconoNuevaCatSeleccionado = emoji;
-                    inputEmojiCustom.value = emoji;
+            if (gridEmojis) {
+                gridEmojis.innerHTML = '';
+                
+                // Patrón Singleton de delegación estática para prevenir leaks en el motor V8
+                if (!gridEmojis.dataset.listenerActivo) {
+                    gridEmojis.addEventListener('click', (e) => {
+                        const btn = e.target.closest('button');
+                        if (!btn) return;
+                        
+                        const emojiSeleccionado = btn.textContent;
+                        gridEmojis.querySelectorAll('button').forEach(b => b.className = 'p-2 rounded-xl text-xl flex items-center justify-center transition-all bg-slate-900 border border-slate-800 cursor-pointer');
+                        btn.className = 'p-2 rounded-xl text-xl flex items-center justify-center transition-all bg-emerald-500/20 border border-emerald-500 cursor-pointer';
+                        
+                        iconoNuevaCatSeleccionado = emojiSeleccionado;
+                        const inputCustom = document.getElementById('input-emoji-personalizado');
+                        if (inputCustom) inputCustom.value = emojiSeleccionado;
+                    });
+                    gridEmojis.dataset.listenerActivo = 'true';
+                }
+
+                listaEmojisPopulares.forEach((emoji, i) => {
+                    const b = document.createElement('button');
+                    b.type = 'button';
+                    b.className = `p-2 rounded-xl text-xl flex items-center justify-center transition-all ${i === 0 ? 'bg-emerald-500/20 border border-emerald-500' : 'bg-slate-900 border border-slate-800'} cursor-pointer`;
+                    b.textContent = emoji;
+                    gridEmojis.appendChild(b);
                 });
-                gridEmojis.appendChild(b);
-            });
+            }
 
             document.getElementById('modal-nueva-cat')?.classList.remove('hidden');
             document.getElementById('modal-nueva-cat')?.classList.add('flex');
@@ -2330,11 +2440,11 @@ let graficoInstancia = null;
                 };
 
                 const { data: newCatData, error: newCatError } = await db.from('categorias').insert([payloadCat]).select();
-                if (error) throw error;
+                if (newCatError) throw newCatError;
 
                 let categoriasCache = JSON.parse(localStorage.getItem('categorias_cache') || '[]');
-                if (data && data?.length > 0) {
-                    categoriasCache = [...categoriasCache, data?.[0]];
+                if (newCatData && newCatData?.length > 0) {
+                    categoriasCache = [...categoriasCache, newCatData[0]];
                     localStorage.setItem('categorias_cache', JSON.stringify(categoriasCache));
                 }
 
@@ -2463,10 +2573,10 @@ let graficoInstancia = null;
             cerrarModalPlanes();
             tipoPlanActivo = tipo;
             const titulos = { limite: 'Controlar Límite / Fijo', meta: 'Nueva Meta de Ahorro', deuda: 'Registrar Deuda / Crédito' };
-            document.getElementById('titulo-form-plan')?.textContent = titulos[tipo] || 'Nuevo Plan';
-            document.getElementById('input-monto-plan')?.value = '';
-            document.getElementById('input-nombre-plan')?.value = '';
-            document.getElementById('input-acumulado-inicial')?.value = '';
+            const tfp = document.getElementById('titulo-form-plan'); if (tfp) tfp.textContent = titulos[tipo] || 'Nuevo Plan';
+            const imp = document.getElementById('input-monto-plan'); if (imp) imp.value = '';
+            const inp = document.getElementById('input-nombre-plan'); if (inp) inp.value = '';
+            const iap = document.getElementById('input-acumulado-inicial'); if (iap) iap.value = '';
 
             const campoCat = document.getElementById('campo-categoria-plan');
             const campoPeriodo = document.getElementById('campo-periodo-plan');
@@ -2605,12 +2715,12 @@ let graficoInstancia = null;
             btnGuardar.disabled = false;
             btnGuardar.classList.remove('opacity-50');
             
-            if(!error) {
+            if(!insPError) {
                 cerrarFormularioPlan();
                 cargarPlanes();
                 mostrarToast('Plan guardado con éxito');
             } else {
-                mostrarToast('Error al guardar plan: ' + error.message, 'error');
+                mostrarToast('Error al guardar plan: ' + insPError.message, 'error');
             }
         });
 
@@ -2666,24 +2776,19 @@ let graficoInstancia = null;
             const { data: { session } } = await db.auth.getSession();
             if (!session) return;
 
-            const { data: limites, error: errLimites } = await db.from('planes')
-                .select('*')
-                .eq('tipo', 'limite')
-                .eq('categoria_id', categoriaId)
-                .eq('user_id', session.user.id);
+            // Optimización V8: Lectura directa desde caché inmutable O(1) eliminando latencia de red
+            const planesGuardados = leerStorageSeguro('planes_cache', []);
+            const limites = planesGuardados.filter(p => p.tipo === 'limite' && p.categoria_id === categoriaId && p.user_id === session.user.id);
 
             if (!limites || limites.length === 0) return;
 
             for (let lim of limites) {
                 const rango = calcularVentanaPeriodo(lim.periodo || 'mensual', lim.fecha_inicio, lim.fecha_fin, lim.auto_renovar);
-                const { data: trans, error: errTrans } = await db.from('transacciones')
-                    .select('monto')
-                    .eq('categoria_id', categoriaId)
-                    .eq('user_id', session.user.id)
-                    .gte('fecha', rango.inicio)
-                    .lte('fecha', rango.fin);
-
-                const gastadoAnterior = (trans || []).reduce((acc, t) => acc + parseFloat(t.monto), 0);
+                
+                // Cálculo determinista en memoria sobre la matriz principal
+                const gastadoAnterior = transaccionesCacheActuales
+                    .filter(t => t.categoria_id === categoriaId && t.fecha >= rango.inicio && t.fecha <= rango.fin)
+                    .reduce((acc, t) => acc + parseFloat(t.monto), 0);
                 const gastadoTotal = gastadoAnterior + nuevoGasto;
                 const tope = parseFloat(lim.monto);
                 const porcentaje = tope > 0 ? Math.round((gastadoTotal / tope) * 100) : 0;
@@ -2698,104 +2803,107 @@ let graficoInstancia = null;
 
         let guardandoTransaccionActiva = false;
 
-        async function guardarTransaccion(categoriaId, notaGasto) {
-  if (guardandoTransaccionActiva) return;
-  const valorGasto = parseInt(monto);
-  if (isNaN(valorGasto) || valorGasto <= 0) return;
+       async function guardarTransaccion(categoriaId, notaGasto) {
+            if (guardandoTransaccionActiva) return;
+            const valorGasto = parseInt(monto, 10);
+            if (isNaN(valorGasto) || valorGasto <= 0) {
+                mostrarToast('El monto debe ser mayor a cero.', 'error');
+                cerrarFlujo();
+                limpiar();
+                return;
+            }
 
-  try {
-    const { data: { session }, error: authError } = await db.auth.getSession();
-    if (authError || !session) {
-      mostrarToast('Debes iniciar sesión para registrar movimientos', 'error');
-      return;
-    }
+            let payload = null;
+            try {
+                const { data: { session }, error: authError } = await db.auth.getSession();
+                if (authError || !session) {
+                    mostrarToast('Debes iniciar sesión para registrar movimientos', 'error');
+                    return;
+                }
 
-    guardandoTransaccionActiva = true;
+                guardandoTransaccionActiva = true;
 
-    let categorias = JSON.parse(localStorage.getItem('categorias_cache') || '[]');
-    const catObj = categorias.find(c => c.id === categoriaId);
+                let categorias = JSON.parse(localStorage.getItem('categorias_cache') || '[]');
+                const catObj = categorias.find(c => c.id === categoriaId);
 
-    // Evitamos bloqueos si fallan las consultas secundarias
-    if (catObj && catObj.tipo === 'ingreso') {
-      await generarRecomendacionSueldo(valorGasto).catch(e => console.warn('Aviso sueldo:', e));
-    }
+                if (catObj && catObj.tipo === 'ingreso') {
+                    await generarRecomendacionSueldo(valorGasto).catch(e => console.warn('Aviso sueldo:', e));
+                }
 
-    if (catObj && catObj.tipo === 'gasto') {
-      await verificarAlertaLimite(categoriaId, valorGasto).catch(e => console.warn('Aviso límite:', e));
-    }
+                if (catObj && catObj.tipo === 'gasto') {
+                    await verificarAlertaLimite(categoriaId, valorGasto).catch(e => console.warn('Aviso límite:', e));
+                }
 
-    const payload = {
-      id: window.crypto && window.crypto.randomUUID ? window.crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
-        const r = (window.crypto.getRandomValues(new Uint8Array(1))[0] % 16) | 0;
-        const v = c === 'x' ? r : (r & 0x3 | 0x8);
-        return v.toString(16);
-      }),
-      monto: valorGasto,
-      categoria_id: categoriaId,
-      cuenta: escapeHTML(cuentaActual),
-      fecha: new Date().toISOString(),
-      notas: notaGasto ? escapeHTML(notaGasto.trim().slice(0, 150)) : null,
-      user_id: session.user.id
-    };
+                payload = {
+                    id: window.crypto && window.crypto.randomUUID ? window.crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+                        const r = (window.crypto.getRandomValues(new Uint8Array(1))[0] % 16) | 0;
+                        const v = c === 'x' ? r : (r & 0x3 | 0x8);
+                        return v.toString(16);
+                    }),
+                    monto: valorGasto,
+                    categoria_id: categoriaId,
+                    cuenta: escapeHTML(cuentaActual),
+                    fecha: new Date().toISOString(),
+                    notas: notaGasto ? escapeHTML(notaGasto.trim().slice(0, 150)) : null,
+                    user_id: session.user.id
+                };
 
-    const display = document.getElementById('flujo-monto-display');
+                const display = document.getElementById('flujo-monto-display');
 
-    if (navigator.onLine) {
-      const { error: insTxError } = await db.from('transacciones').insert([payload]);
-      if (error) throw error; 
-    } else {
-      encolarTransaccionManual(payload);
-    }
+                if (navigator.onLine) {
+                    const { error: insTxError } = await db.from('transacciones').insert([payload]);
+                    if (insTxError) throw insTxError; 
+                } else {
+                    encolarTransaccionManual(payload);
+                }
 
-    if (catObj && catObj.tipo === 'gasto') {
-      const porcentajeGastoDash = ultimosIngresosCalculados > 0 ? Math.round((valorGasto / ultimosIngresosCalculados) * 100) : 0;
-      if (porcentajeGastoDash >= 20) {
-        setTimeout(() => {
-          mostrarToast(`⚠️ Este gasto representa el ${porcentajeGastoDash}% de tus ingresos totales. ¡Vigila tu margen!`, 'error');
-        }, 500);
-      }
-    }
+                if (catObj && catObj.tipo === 'gasto') {
+                    const porcentajeGastoDash = ultimosIngresosCalculados > 0 ? Math.round((valorGasto / ultimosIngresosCalculados) * 100) : 0;
+                    if (porcentajeGastoDash >= 20) {
+                        setTimeout(() => {
+                            mostrarToast(`⚠️ Este gasto representa el ${porcentajeGastoDash}% de tus ingresos totales. ¡Vigila tu margen!`, 'error');
+                        }, 500);
+                    }
+                }
 
-    if (navigator.vibrate) navigator.vibrate(50);
+                if (navigator.vibrate) navigator.vibrate(50);
 
-    if (display) display.style.color = '#34d399';
-    setTimeout(() => {
-      if (display) display.style.color = 'white';
-      cerrarFlujo();
-      limpiar();
-      guardandoTransaccionActiva = false;
-      mostrarToast('Transacción registrada con éxito');
-      if (document.getElementById('pantalla-dashboard') && !document.getElementById('pantalla-dashboard')?.classList.contains('hidden')) {
-        cargarEstadisticas();
-      }
-    }, 300);
+                if (display) display.style.color = '#34d399';
+                setTimeout(() => {
+                    if (display) display.style.color = 'white';
+                    cerrarFlujo();
+                    limpiar();
+                    guardandoTransaccionActiva = false;
+                    mostrarToast('Transacción registrada con éxito');
+                    if (document.getElementById('pantalla-dashboard') && !document.getElementById('pantalla-dashboard')?.classList.contains('hidden')) {
+                        cargarEstadisticas();
+                    }
+                }, 300);
 
-  } catch (errorGlobal) {
-    console.warn('Excepción atrapada en red/guardado:', errorGlobal);
-    guardandoTransaccionActiva = false;
-    const display = document.getElementById('flujo-monto-display');
-    
-    // [NUEVO] Rescate Lie-Fi: Si el motor rechaza por Falsa Conectividad, forzar encolado local sin pérdida de datos
-    const isNetworkError = errorGlobal.message === 'Failed to fetch' || String(errorGlobal).includes('Network');
-    if (isNetworkError && payload) {
-        encolarTransaccionManual(payload);
-        if (display) display.style.color = '#34d399';
-        setTimeout(() => {
-            if (display) display.style.color = 'white';
-            cerrarFlujo(); limpiar();
-            if (document.getElementById('pantalla-dashboard') && !document.getElementById('pantalla-dashboard')?.classList.contains('hidden')) cargarEstadisticas();
-        }, 300);
-        return; // Salida temprana exitosa
-    }
+            } catch (errorGlobal) {
+                console.warn('Excepción atrapada en red/guardado:', errorGlobal);
+                guardandoTransaccionActiva = false;
+                const display = document.getElementById('flujo-monto-display');
+                
+                const isNetworkError = errorGlobal.message === 'Failed to fetch' || String(errorGlobal).includes('Network');
+                if (isNetworkError && payload) {
+                    encolarTransaccionManual(payload);
+                    if (display) display.style.color = '#34d399';
+                    setTimeout(() => {
+                        if (display) display.style.color = 'white';
+                        cerrarFlujo(); limpiar();
+                        if (document.getElementById('pantalla-dashboard') && !document.getElementById('pantalla-dashboard')?.classList.contains('hidden')) cargarEstadisticas();
+                    }, 300);
+                    return;
+                }
 
-    // Fallo de lógica interna real (Autenticación, SQL, etc.)
-    if (display) {
-      display.style.color = '#ef4444';
-      setTimeout(() => display.style.color = 'white', 1000);
-    }
-    mostrarToast('Hubo un problema de conexión o sesión. Revisa tu red.', 'error');
-  }
-}
+                if (display) {
+                    display.style.color = '#ef4444';
+                    setTimeout(() => display.style.color = 'white', 1000);
+                }
+                mostrarToast('Hubo un problema de conexión o sesión. Revisa tu red.', 'error');
+            }
+        }
 
 function encolarTransaccionManual(payload) {
   let queue = JSON.parse(localStorage.getItem('offline_queue') || '[]');
@@ -2814,13 +2922,21 @@ function encolarTransaccionManual(payload) {
 }
 
         async function cargarPlanes() {
-            const { data: { session } } = await db.auth.getSession();
+            let session = null;
+            try {
+                const { data, error } = await db.auth.getSession();
+                if (error) throw error;
+                session = data?.session;
+            } catch (err) {
+                console.warn('[CISO Guard] Error recuperando sesión en Planes:', err.message);
+            }
+
             const contenedor = document.getElementById('contenedor-planes');
             const fab = document.getElementById('btn-fab-plan');
 
             if (!session) {
-                contenedor.innerHTML = '';
-                fab.classList.add('hidden');
+                if (contenedor) contenedor.innerHTML = '';
+                if (fab) fab.classList.add('hidden');
                 return;
             }
 
@@ -3014,39 +3130,45 @@ function encolarTransaccionManual(payload) {
         }
 
         async function generarRecomendacionSueldo(sueldoIngresado) {
-            const { data: { session } } = await db.auth.getSession();
-            if (!session) return;
-            
-            const { data: planes, error: errPlanes } = await db.from('planes').select('*').eq('user_id', session.user.id);
-            let totalFijosYDeudas = 0;
-            let tieneFondoEmergencia = false;
-            
-            if (planes) {
-                planes.forEach(p => {
-                    if (p.tipo === 'limite') {
-                        totalFijosYDeudas += parseFloat(p.monto);
-                    } else if (p.tipo === 'deuda') {
-                        const pendiente = Math.max(0, parseFloat(p.monto) - parseFloat(p.monto_acumulado || 0));
-                        totalFijosYDeudas += Math.min(pendiente, parseFloat(p.monto) * 0.10);
-                    }
-                    if (p.tipo === 'meta' && p.es_fondo_emergencia) {
-                        tieneFondoEmergencia = true;
-                    }
-                });
-            }
+            try {
+                const { data: { session } } = await db.auth.getSession();
+                if (!session) return;
+                
+                const { data: planes, error: errPlanes } = await db.from('planes').select('*').eq('user_id', session.user.id);
+                if (errPlanes) throw errPlanes;
+                
+                let totalFijosYDeudas = 0;
+                let tieneFondoEmergencia = false;
+                
+                if (planes) {
+                    planes.forEach(p => {
+                        if (p.tipo === 'limite') {
+                            totalFijosYDeudas += parseFloat(p.monto);
+                        } else if (p.tipo === 'deuda') {
+                            const pendiente = Math.max(0, parseFloat(p.monto) - parseFloat(p.monto_acumulado || 0));
+                            totalFijosYDeudas += Math.min(pendiente, parseFloat(p.monto) * 0.10);
+                        }
+                        if (p.tipo === 'meta' && p.es_fondo_emergencia) {
+                            tieneFondoEmergencia = true;
+                        }
+                    });
+                }
 
-            const margenLimpio = sueldoIngresado - totalFijosYDeudas;
-            
-            if (margenLimpio <= 0) {
-                mostrarToast("⚠️ Tus compromisos fijos y deudas igualan o superan tu salario registrado.", "error");
-                return;
-            }
+                const margenLimpio = sueldoIngresado - totalFijosYDeudas;
+                
+                if (margenLimpio <= 0) {
+                    mostrarToast("⚠️ Tus compromisos fijos y deudas igualan o superan tu salario registrado.", "error");
+                    return;
+                }
 
-            if (tieneFondoEmergencia) {
-                const sugeridoFondo = Math.round(margenLimpio * 0.20);
-                mostrarToast(`🚨 De tu sueldo de ${formatearMoneda(sueldoIngresado)}, fijos y deudas suman ${formatearMoneda(totalFijosYDeudas)}. Aparta ${formatearMoneda(sugeridoFondo)} (20% del restante) para tu fondo de emergencia.`);
-            } else {
-                mostrarToast(`💰 Sueldo recibido. Margen limpio disponible: ${formatearMoneda(margenLimpio)} tras compromisos.`);
+                if (tieneFondoEmergencia) {
+                    const sugeridoFondo = Math.round(margenLimpio * 0.20);
+                    mostrarToast(`🚨 De tu sueldo de ${formatearMoneda(sueldoIngresado)}, fijos y deudas suman ${formatearMoneda(totalFijosYDeudas)}. Aparta ${formatearMoneda(sugeridoFondo)} (20% del restante) para tu fondo de emergencia.`);
+                } else {
+                    mostrarToast(`💰 Sueldo recibido. Margen limpio disponible: ${formatearMoneda(margenLimpio)} tras compromisos.`);
+                }
+            } catch (error) {
+                console.warn('[CISO Guard] Fuga de asincronía neutralizada en cálculo de sueldo:', error.message);
             }
         }
 
@@ -3062,7 +3184,7 @@ function encolarTransaccionManual(payload) {
                 if (!navigator.onLine) throw new Error("Operación no disponible sin conexión.");
                 
                 const { error: delTxError } = await db.from('transacciones').delete().eq('id', id);
-                if (error) throw error;
+                if (delTxError) throw delTxError;
                 
                 // Sincronización inmutable manual de la caché para aliviar latencia de re-fetch
                 transaccionesCacheActuales = transaccionesCacheActuales.filter(t => t.id !== id);
@@ -3131,16 +3253,25 @@ function encolarTransaccionManual(payload) {
 
 
         async function cargarEstadisticas() {
-            const { data: { session } } = await db.auth.getSession();
+            let session = null;
+            try {
+                const { data } = await db.auth.getSession();
+                session = data?.session;
+            } catch (authError) {
+                console.warn('[CISO Guard] Error validando sesión para estadísticas:', authError.message);
+            }
+
             if (!session) {
                 renderizarDashboardUI(0, 0, 0, [], 0, 0, 0);
-                document.getElementById('historial-transacciones')?.innerHTML = '';
+                const historial = document.getElementById('historial-transacciones');
+                if (historial) historial.innerHTML = '';
                 return;
             }
 
-            const filtro = document.getElementById('filtro-tiempo')?.value;
-            const mesSeleccionado = parseInt(document.getElementById('selector-mes-excel')?.value);
+            const filtro = document.getElementById('filtro-tiempo')?.value || 'mes';
+            const elSelectorMes = document.getElementById('selector-mes-excel');
             const ahora = new Date();
+            const mesSeleccionado = elSelectorMes && elSelectorMes.value !== "" ? parseInt(elSelectorMes.value) : ahora.getMonth();
             let inicioISO, finISO;
             
             if (filtro === 'dia') {
@@ -3164,25 +3295,38 @@ function encolarTransaccionManual(payload) {
             categorias = categorias.filter(c => !idsEliminadas.includes(c.id));
 
             if (navigator.onLine) {
-                // Filtro explícito para aislamiento multi-tenant en capas cliente
-                let query = db.from('categorias').select('*').order('nombre');
-                if (session) query = query.or(`user_id.is.null,user_id.eq.${session.user.id}`);
-                
-                const { data: catData, error: catError } = await query;
-                // [CISO FIX] Removemos la restricción catData.length > 0 para permitir sobreescritura con arreglos vacíos
-                if (!catError && catData) { 
-                    const editadasLocal = categorias.filter(c => c._editado);
-                    let categoriasFusionadas = catData.filter(c => !idsEliminadas.includes(c.id));
+                try {
+                    // Filtro explícito para aislamiento multi-tenant en capas cliente
+                    let query = db.from('categorias').select('*').order('nombre');
+                    if (session) query = query.or(`user_id.is.null,user_id.eq.${session.user.id}`);
                     
-                    // Merge State: Preservar ediciones optimistas (Drafts) ante reloads
-                    editadasLocal.forEach(catEditada => {
-                        const idx = categoriasFusionadas.findIndex(c => c.id === catEditada.id);
-                        if (idx !== -1) categoriasFusionadas[idx] = catEditada;
-                        else categoriasFusionadas.push(catEditada);
-                    });
+                    const { data: catData, error: catError } = await query;
+                    // [CISO FIX] Removemos la restricción catData.length > 0 para permitir sobreescritura
+                    if (!catError && catData) { 
+                        const editadasLocal = categorias.filter(c => c._editado);
+                        
+                        // [INYECCIÓN] Deduplicación asimétrica para estado Dashboard
+                        const mapaDeduplicacion = new Map();
+                        [...catData].sort((a, b) => (b.user_id ? 1 : 0) - (a.user_id ? 1 : 0)).forEach(c => {
+                            const hash = c.nombre.toLowerCase().trim();
+                            if (!mapaDeduplicacion.has(hash)) mapaDeduplicacion.set(hash, c);
+                        });
+                        const catLimpias = Array.from(mapaDeduplicacion.values());
+                        
+                        let categoriasFusionadas = catLimpias.filter(c => !idsEliminadas.includes(c.id));
+                        
+                        // Merge State: Preservar ediciones optimistas (Drafts) ante reloads
+                        editadasLocal.forEach(catEditada => {
+                            const idx = categoriasFusionadas.findIndex(c => c.id === catEditada.id);
+                            if (idx !== -1) categoriasFusionadas[idx] = catEditada;
+                            else categoriasFusionadas.push(catEditada);
+                        });
 
-                    categorias = categoriasFusionadas;
-                    localStorage.setItem('categorias_cache', JSON.stringify(categorias)); 
+                        categorias = categoriasFusionadas;
+                        localStorage.setItem('categorias_cache', JSON.stringify(categorias)); 
+                    }
+                } catch (catError) {
+                    console.warn('[CISO Guard] Fallo en red al sincronizar categorías del dashboard:', catError.message);
                 }
             }
 
@@ -3226,7 +3370,10 @@ function encolarTransaccionManual(payload) {
 
             const totalesCuentas = { 'Efectivo': 0, 'Bancos': 0, 'Tarjetas': 0, 'Transferencia': 0 };
 
-            const reporteGastos = {};
+            // [INYECCIÓN] Objeto Phantom para retener la matemática de transacciones huérfanas
+            const reporteGastos = { 
+                'orphan': { id: 'orphan', nombre: 'Categoría Eliminada', icono: '👻', es_fijo: false, gastado: 0, presupuesto: 0 } 
+            };
             const mapaCat = {};
             
             categorias.forEach(c => { 
@@ -3243,12 +3390,11 @@ function encolarTransaccionManual(payload) {
                 }
             });
 
-
-
             // Procesamiento en lotes para evitar bloqueos del hilo principal (V8 Optimization)
             transaccionesCacheActuales.forEach(t => {
-                const cat = mapaCat[t.categoria_id];
-                if (!cat) return;
+                // Fallback de integridad para evitar evaporación de dinero en el balance
+                const cat = mapaCat[t.categoria_id] || { id: 'orphan', nombre: 'Categoría Eliminada', icono: '👻', tipo: 'gasto', es_fijo: false };
+                
                 // Blindaje estricto de coerción de tipos para cálculos financieros
                 const valor = (Number.parseFloat(t.monto) || 0);
                 if (valor <= 0) return; // Auditoría de montos corruptos o negativos fantasma
@@ -3265,7 +3411,7 @@ function encolarTransaccionManual(payload) {
                     totalIngresado += valor;
                 } else if (cat.tipo === 'gasto') {
                     totalGastado += valor;
-                    if(reporteGastos[t.categoria_id]) reporteGastos[t.categoria_id].gastado += valor;
+                    if(reporteGastos[cat.id]) reporteGastos[cat.id].gastado += valor;
 
                     const nombreUpper = cat.nombre.toUpperCase();
                     const notasUpper = (t.notas || '').toUpperCase();
@@ -3284,8 +3430,6 @@ function encolarTransaccionManual(payload) {
                     }
                 }
             });
-
-
 
             document.getElementById('cuenta-efectivo-val')?.textContent = formatearMoneda(totalesCuentas['Efectivo']);
             document.getElementById('cuenta-bancos-val')?.textContent = formatearMoneda(totalesCuentas['Bancos']);
@@ -3330,7 +3474,8 @@ function encolarTransaccionManual(payload) {
 
         function renderizarListaTransacciones(transacciones, mapaCat) {
             const contenedorHistorial = document.getElementById('historial-transacciones');
-            contenedorHistorial.innerHTML = '';
+if (!contenedorHistorial) return;
+contenedorHistorial.innerHTML = '';
 
             if(!transacciones || transacciones.length === 0) {
                 contenedorHistorial.innerHTML = '<p class="text-slate-500 text-xs text-center py-4">No hay transacciones registradas en este periodo</p>';
@@ -3341,8 +3486,8 @@ function encolarTransaccionManual(payload) {
             const fragmentoDOM = document.createDocumentFragment();
 
             transacciones.forEach((t, index) => {
-                const cat = mapaCat[t.categoria_id];
-                if (!cat) return;
+                // [INYECCIÓN] Fallback visual para garantizar la visibilidad de historial huérfano
+                const cat = mapaCat[t.categoria_id] || { id: 'orphan', nombre: 'Categoría Eliminada', icono: '👻', tipo: 'gasto' };
                 const valor = parseFloat(t.monto);
                 const isIngreso = cat.tipo === 'ingreso';
 
@@ -3383,9 +3528,11 @@ function encolarTransaccionManual(payload) {
                     
                     const btnBorrar = document.createElement('button');
                     btnBorrar.type = "button";
-                    /* [NUEVO] Inyección de clase rastreadora y dataset inmutable */
+                    /* [NUEVO] Inyección de clase rastreadora y dataset inmutable + a11y */
                     btnBorrar.className = "w-6 h-6 rounded-full flex items-center justify-center bg-slate-800 text-slate-500 hover:text-red-400 hover:bg-slate-700 transition-colors cursor-pointer btn-borrar-tx";
                     btnBorrar.dataset.txid = escapeHTML(t.id);
+                    btnBorrar.setAttribute('aria-label', `Eliminar transacción de ${escapeHTML(cat.nombre)} por valor de ${formatearMoneda(valor)}`);
+                    btnBorrar.setAttribute('title', 'Eliminar registro permanentemente');
                     btnBorrar.textContent = "✕";
                     
                     valDiv.appendChild(montoSpan);
@@ -3491,11 +3638,11 @@ function encolarTransaccionManual(payload) {
             let pDisp = totalIngresado > 0 ? ((balanceReal / totalIngresado) * 100).toFixed(0) : 0;
             if(pDisp < 0) pDisp = 0; if(pDisp > 100) pDisp = 100;
 
-            document.getElementById('dash-ingresos')?.textContent = `+${formatearMoneda(totalIngresado)}`;
-            document.getElementById('dash-gastos')?.textContent = `-${formatearMoneda(totalGastado)}`;
-            document.getElementById('dash-balance')?.textContent = formatearMoneda(balanceReal);
-            document.getElementById('dash-porcentaje')?.textContent = `${pDisp}%`;
-            document.getElementById('dash-bar')?.style.width = `${pDisp}%`;
+            const dIng = document.getElementById('dash-ingresos'); if(dIng) dIng.textContent = `+${formatearMoneda(totalIngresado)}`;
+            const dGas = document.getElementById('dash-gastos'); if(dGas) dGas.textContent = `-${formatearMoneda(totalGastado)}`;
+            const dBal = document.getElementById('dash-balance'); if(dBal) dBal.textContent = formatearMoneda(balanceReal);
+            const dPor = document.getElementById('dash-porcentaje'); if(dPor) dPor.textContent = `${pDisp}%`;
+            const dBar = document.getElementById('dash-bar'); if(dBar) dBar.style.width = `${pDisp}%`;
 
             if (totalIngresado > 0) {
                 const necPct = Math.round((totalNecesidades / totalIngresado) * 100);
@@ -3506,33 +3653,29 @@ function encolarTransaccionManual(payload) {
                 const elDes = document.getElementById('stat-30');
                 const elAho = document.getElementById('stat-20');
                 
-                elNec.textContent = `${necPct}%`;
-                elNec.className = `text-xs font-bold ${necPct > 50 ? 'text-red-400' : 'text-white'}`;
-                
-                elDes.textContent = `${desPct}%`;
-                elDes.className = `text-xs font-bold ${desPct > 30 ? 'text-amber-400' : 'text-white'}`;
-                
-                elAho.textContent = `${ahoPct}%`;
-                elAho.className = `text-xs font-bold ${ahoPct >= 20 ? 'text-emerald-400' : 'text-slate-300'}`;
+                if(elNec) { elNec.textContent = `${necPct}%`; elNec.className = `text-xs font-bold ${necPct > 50 ? 'text-red-400' : 'text-white'}`; }
+                if(elDes) { elDes.textContent = `${desPct}%`; elDes.className = `text-xs font-bold ${desPct > 30 ? 'text-amber-400' : 'text-white'}`; }
+                if(elAho) { elAho.textContent = `${ahoPct}%`; elAho.className = `text-xs font-bold ${ahoPct >= 20 ? 'text-emerald-400' : 'text-slate-300'}`; }
             } else {
-                document.getElementById('stat-50')?.textContent = '0%';
-                document.getElementById('stat-30')?.textContent = '0%';
-                document.getElementById('stat-20')?.textContent = '0%';
+                const s50 = document.getElementById('stat-50'); if(s50) s50.textContent = '0%';
+                const s30 = document.getElementById('stat-30'); if(s30) s30.textContent = '0%';
+                const s20 = document.getElementById('stat-20'); if(s20) s20.textContent = '0%';
             }
 
             const ahora = new Date();
-            const mesSeleccionado = parseInt(document.getElementById('selector-mes-excel')?.value);
+            const selMes = document.getElementById('selector-mes-excel');
+            const mesSeleccionado = parseInt(selMes ? selMes.value : ahora.getMonth());
             const diasTranscurridos = Math.max(1, ahora.getDate());
             
             const promedio = totalGastado / diasTranscurridos;
             const diasDeVidaRestantes = promedio > 0 ? Math.floor(balanceReal / promedio) : 99;
 
-            document.getElementById('dash-promedio')?.textContent = formatearMoneda(promedio);
-            document.getElementById('dash-seguro')?.textContent = formatearMoneda(promedio);
-            document.getElementById('dash-dias-restantes')?.textContent = balanceReal <= 0 ? '¡Sin fondos!' : `~${diasDeVidaRestantes} días de vida`;
+            const dProm = document.getElementById('dash-promedio'); if(dProm) dProm.textContent = formatearMoneda(promedio);
+            const dSeg = document.getElementById('dash-seguro'); if(dSeg) dSeg.textContent = formatearMoneda(promedio);
+            const dDias = document.getElementById('dash-dias-restantes'); if(dDias) dDias.textContent = balanceReal <= 0 ? '¡Sin fondos!' : `~${diasDeVidaRestantes} días de vida`;
 
             const ordenados = [...arrGastos].sort((a,b) => b.gastado - a.gastado);
-            document.getElementById('dash-top-cat')?.textContent = ordenados.length > 0 && ordenados[0].gastado > 0 ? ordenados[0].nombre : 'N/A';
+            const dTop = document.getElementById('dash-top-cat'); if(dTop) dTop.textContent = ordenados.length > 0 && ordenados[0].gastado > 0 ? ordenados[0].nombre : 'N/A';
 
             const matrizContainer = document.getElementById('matriz-presupuesto-excel');
             matrizContainer.innerHTML = '';
@@ -3545,6 +3688,9 @@ function encolarTransaccionManual(payload) {
                 const renderMatrixWithLimits = (planesLimites = []) => {
                     const mapaLimites = {};
                     planesLimites.forEach(p => { mapaLimites[p.categoria_id] = parseFloat(p.monto); });
+
+                    // [V8 PERFORMANCE] Uso de Fragment para evitar Reflows múltiples en el DOM
+                    const fragmentoMatriz = document.createDocumentFragment();
 
                     ordenados.forEach(item => {
                         const row = document.createElement('div');
@@ -3576,7 +3722,7 @@ function encolarTransaccionManual(payload) {
                                 </div>
                                 <div class="flex items-center gap-2">
                                     <span class="text-slate-400">Real: <strong class="text-white tabular-nums">${formatearMoneda(item.gastado)}</strong></span>
-                                    <button type="button" class="btn-editar-presupuesto w-6 h-6 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center text-xs transition-colors border border-slate-800 cursor-pointer" data-catid="${item.id}" data-catnombre="${escapeHTML(item.nombre)}" data-presupuesto="${presupuestoBase}" title="Cambiar presupuesto">⚙️</button>
+                                    <button type="button" class="btn-editar-presupuesto w-6 h-6 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center text-xs transition-colors border border-slate-800 cursor-pointer" aria-label="Editar presupuesto de ${escapeHTML(item.nombre)}" data-catid="${item.id}" data-catnombre="${escapeHTML(item.nombre)}" data-presupuesto="${presupuestoBase}" title="Cambiar presupuesto">⚙️</button>
                                     <span class="text-[9px] font-bold px-2 py-0.5 rounded-full border ${alertaColor}">${textoEstado}</span>
                                 </div>
                             </div>
@@ -3588,8 +3734,10 @@ function encolarTransaccionManual(payload) {
                                 <div class="${barraColor} h-1.5 rounded-full transition-all duration-500" style="width: ${Math.min(100, porcentajeUso)}%"></div>
                             </div>
                         `;
-                        matrizContainer.appendChild(row);
+                        fragmentoMatriz.appendChild(row);
                     });
+                    
+                    matrizContainer.appendChild(fragmentoMatriz);
 
                     /* [NUEVO] Patrón Singleton de delegación para proteger la memoria RAM en el Dashboard */
                     if (!matrizContainer.dataset.listenerActivo) {
@@ -3697,20 +3845,31 @@ function encolarTransaccionManual(payload) {
             const catsGastos = categorias.filter(c => c.tipo === 'gasto');
             if (catsGastos.length === 0) return;
 
-            catsGastos.forEach(cat => {
-                const b = document.createElement('button');
-                b.type = 'button';
-                b.className = "flex items-center gap-1.5 px-3 py-1.5 bg-slate-900/90 border border-slate-800/80 rounded-full text-xs font-semibold text-slate-300 active:scale-95 transition-all shrink-0 cursor-pointer shadow-sm hover:border-emerald-500/40";
-                b.innerHTML = `<span>${escapeHTML(cat.icono)}</span> <span class="max-w-[90px] truncate">${escapeHTML(cat.nombre)}</span>`;
-                b?.addEventListener('click', () => {
+            // [PERFORMANCE V8] Delegación de eventos estática mediante Singleton
+            if (!contenedor.dataset.listenerRapidoActivo) {
+                contenedor.addEventListener('click', (e) => {
+                    const btn = e.target.closest('.btn-acceso-rapido');
+                    if (!btn) return;
                     if (parseInt(monto) <= 0) {
                         mostrarToast('Digita un monto primero', 'error');
                         return;
                     }
-                    guardarTransaccion(cat?.id, 'Gasto rápido');
+                    guardarTransaccion(btn.dataset.catid, 'Gasto rápido');
                 });
-                contenedor.appendChild(b);
+                contenedor.dataset.listenerRapidoActivo = 'true';
+            }
+
+            const fragmentoDOM = document.createDocumentFragment();
+            catsGastos.forEach(cat => {
+                const b = document.createElement('button');
+                b.type = 'button';
+                b.className = "btn-acceso-rapido flex items-center gap-1.5 px-3 py-1.5 bg-slate-900/90 border border-slate-800/80 rounded-full text-xs font-semibold text-slate-300 active:scale-95 transition-all shrink-0 cursor-pointer shadow-sm hover:border-emerald-500/40";
+                b.dataset.catid = escapeHTML(cat.id);
+                b.setAttribute('aria-label', `Acceso rápido para registrar gasto en ${escapeHTML(cat.nombre)}`);
+                b.innerHTML = `<span>${escapeHTML(cat.icono)}</span> <span class="max-w-[90px] truncate">${escapeHTML(cat.nombre)}</span>`;
+                fragmentoDOM.appendChild(b);
             });
+            contenedor.appendChild(fragmentoDOM);
         }
 
         document.querySelectorAll('.sug-nota-chip').forEach(btn => {
