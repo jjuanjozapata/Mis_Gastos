@@ -73,7 +73,11 @@
         .tabular-nums { font-variant-numeric: tabular-nums; }
         
         /* Gestión Píxel-Perfect de Áreas Seguras (Isla Dinámica y Home Indicator) */
-        .pb-safe { padding-bottom: 20px !important; padding-bottom: calc(env(safe-area-inset-bottom) + 20px) !important; }
+        .pb-safe { 
+            padding-bottom: 20px !important; 
+            padding-bottom: calc(env(safe-area-inset-bottom) + 20px) !important; 
+            min-height: calc(env(safe-area-inset-bottom) + 70px) !important; 
+        }
         .pt-safe { padding-top: 24px !important; padding-top: calc(env(safe-area-inset-top) + 24px) !important; }
     </style>
 </head>
@@ -875,12 +879,16 @@ if (SUPABASE_ANON_KEY === 'INSERTA_AQUI_TU_SUPABASE_ANON_KEY') {
         window.addEventListener('offline', actualizarEstadoRed);
         actualizarEstadoRed();
 
+        let candadoSincronizacionOffline = false;
         async function sincronizarColaOffline() {
+            if (candadoSincronizacionOffline) return;
+            
             let queue = leerStorageSeguro('offline_queue', []);
             let queuePlanes = leerStorageSeguro('offline_queue_planes', []);
             
             if (queue.length === 0 && queuePlanes.length === 0) return;
 
+            candadoSincronizacionOffline = true;
             try {
                 const { data: { session } } = await db.auth.getSession();
                 if (!session) return;
@@ -935,6 +943,8 @@ if (SUPABASE_ANON_KEY === 'INSERTA_AQUI_TU_SUPABASE_ANON_KEY') {
                 }
             } catch (error) {
                 console.warn('[CISO Guard] Sincronización pausada por inestabilidad de red o sesión:', error.message);
+            } finally {
+                candadoSincronizacionOffline = false;
             }
         }
            
@@ -3804,12 +3814,14 @@ contenedorHistorial.innerHTML = '';
             const canvasEl = document.getElementById('graficoCategorias');
             if (!canvasEl) return;
             
-            if (graficoInstancia) {
-                // Mutación reactiva: actualizamos datos sin destruir el canvas (0 Memory Leaks, 100x más rápido)
+            if (graficoInstancia && graficoInstancia.data?.datasets?.[0]) {
+                // Mutación reactiva controlada: evitamos caída si el dataset se corrompe en memoria
                 graficoInstancia.data.labels = labels;
                 graficoInstancia.data.datasets[0].data = data;
                 if (customColors) graficoInstancia.data.datasets[0].backgroundColor = customColors;
-                graficoInstancia.options.plugins.centerText.text = centerText;
+                if (graficoInstancia.options?.plugins?.centerText) {
+                    graficoInstancia.options.plugins.centerText.text = centerText;
+                }
                 graficoInstancia.update();
                 return;
             }
