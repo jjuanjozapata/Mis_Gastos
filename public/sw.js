@@ -1,10 +1,10 @@
-const CACHE_VERSION = 'v22-prod-secure';
+const CACHE_VERSION = 'v23-prod-secure';
 const CACHE_NAME = `gastos-${CACHE_VERSION}`;
 const ASSETS = [
 '/',
-'/index.html',
-'/style.css',
-'/manifest.json',
+'./index.html',
+'./style.css',
+'./manifest.json',
 'https://cdn-icons-png.flaticon.com/512/2933/2933116.png',
 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2',
 'https://cdn.jsdelivr.net/npm/chart.js',

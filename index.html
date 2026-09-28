@@ -826,6 +826,7 @@
         let ultimosGastosCalculados = 0;
         let ultimaMatrizGastos = [];
         let transaccionesCacheActuales = [];
+        let categoriaEdicionId = null; // [CISO FIX] Declaración explícita para prevenir ReferenceError en modo módulo
 
         let formateadorRaw = new Intl.NumberFormat('es-CO', { style: 'currency', currency: monedaActual, maximumFractionDigits: 0 });
         // [NUEVO] Caché global inmutable para inputs numéricos (Zero GC Thrashing)
