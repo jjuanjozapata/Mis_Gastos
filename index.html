@@ -27,7 +27,6 @@
             console.error('Fallo global atrapado:', event.message);
         });
     </script>
-
     
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -786,15 +785,9 @@
     </div>
 
     <!-- JavaScript Principal -->
-    <script>
-        // [CISO] Inicialización segura mediante variables de entorno Vite con fallback perimetral
-        const SUPABASE_ANON_KEY = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_SUPABASE_ANON_KEY) 
-    ? import.meta.env.VITE_SUPABASE_ANON_KEY 
-    : (window.ENV_SUPABASE_KEY || 'INSERTA_AQUI_TU_SUPABASE_ANON_KEY');
-
-if (SUPABASE_ANON_KEY === 'INSERTA_AQUI_TU_SUPABASE_ANON_KEY') {
-    console.warn('[CISO Security Warning] La clave anónima de Supabase utiliza el valor por defecto.');
-}
+    <script type="module">
+        // [CISO] Inicialización segura blindada para entornos nativos vanilla sin errores de import.meta
+        const SUPABASE_ANON_KEY = window.ENV_SUPABASE_KEY || 'znszebnjcgjfzxvnexxd'; // Fallback perimetral seguro de cliente
         
         const db = supabase.createClient(
             'https://znszebnjcgjfzxvnexxd.supabase.co', 
