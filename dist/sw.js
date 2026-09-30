@@ -2,13 +2,10 @@ const CACHE_VERSION = 'v24-prod-secure';
 const CACHE_NAME = `gastos-${CACHE_VERSION}`;
 const ASSETS = [
   '/',
-  './index.html',
-  './style.css',
-  './manifest.json',
-  'https://flaticon.com',
-  'https://jsdelivr.net',
-  'https://jsdelivr.net',
-  'https://jsdelivr.net'
+  '/index.html',
+  '/style.css',
+  '/app.js',
+  '/manifest.json'
 ];
 
 self.addEventListener('install', event => {

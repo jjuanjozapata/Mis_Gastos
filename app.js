@@ -1,18 +1,20 @@
 
-// [CISO] Inicialización segura blindada para entornos nativos vanilla sin errores de import.meta
-        const SUPABASE_ANON_KEY = window.ENV_SUPABASE_KEY || 'znszebnjcgjfzxvnexxd'; // Fallback perimetral seguro de cliente
+// [CISO] Inicialización resiliente y segura con priorización de variables VITE_
+        const SUPABASE_URL = import.meta.env?.VITE_SUPABASE_URL || 'https://znszebnjcgjfzxvnexxd.supabase.co';
+        const SUPABASE_ANON_KEY = import.meta.env?.VITE_SUPABASE_ANON_KEY || window.ENV_SUPABASE_KEY || 'znszebnjcgjfzxvnexxd';
         
-        const db = supabase.createClient(
-            'https://znszebnjcgjfzxvnexxd.supabase.co', 
-            SUPABASE_ANON_KEY,
-            {
+        let db = null;
+        if (typeof window !== 'undefined' && window.supabase && typeof window.supabase.createClient === 'function') {
+            db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
                 auth: {
                     storage: window.localStorage,
                     autoRefreshToken: true,
                     persistSession: true
                 }
-            }
-        );
+            });
+        } else {
+            console.error('[CISO Guard] Instancia nativa de Supabase no detectada en el objeto global.');
+        }
 
         const escapeHTML = str => str ? DOMPurify.sanitize(String(str), { ALLOWED_TAGS: [], ALLOWED_ATTR: [] }) : '';
         
@@ -975,7 +977,8 @@ if (btnCuenta) {
             // Estado base garantizado al abrir
             tipoActual = 'gasto';
             tipoSubCatActual = 'variable';
-            document.getElementById('input-buscar-categoria').value = '';
+            const inputBuscar = document.getElementById('input-buscar-categoria');
+            if (inputBuscar) inputBuscar.value = '';
             
             const flMonto = document.getElementById('flujo-monto-display');
             if (flMonto) flMonto.textContent = formatearMoneda(parseInt(monto));
@@ -993,9 +996,11 @@ if (btnCuenta) {
         function cerrarFlujo() {
             document.getElementById('modal-flujo')?.classList.add('hidden');
             document.getElementById('modal-flujo')?.classList.remove('flex');
-            // Restaurar visualmente los botones de filtro a su estado por defecto
-            document.getElementById('filtro-cat-variable').className = "py-2 px-3 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-bold transition-all cursor-pointer";
-            document.getElementById('filtro-cat-fijo').className = "py-2 px-3 rounded-xl bg-slate-800 border border-slate-700 text-slate-400 text-xs font-bold transition-all cursor-pointer";
+            // Restaurar visualmente los botones de filtro a su estado por defecto de forma segura
+            const fCatVar = document.getElementById('filtro-cat-variable');
+            if (fCatVar) fCatVar.className = "py-2 px-3 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-bold transition-all cursor-pointer";
+            const fCatFijo = document.getElementById('filtro-cat-fijo');
+            if (fCatFijo) fCatFijo.className = "py-2 px-3 rounded-xl bg-slate-800 border border-slate-700 text-slate-400 text-xs font-bold transition-all cursor-pointer";
         }
 
         document.getElementById('btn-cerrar-flujo')?.addEventListener('click', cerrarFlujo);
@@ -1437,11 +1442,11 @@ if (btnCuenta) {
             else seccionTipo.classList.remove('hidden');
 
             const inputEmojiCustom = document.getElementById('input-emoji-editar-personalizado');
-            inputEmojiCustom.value = cat.icono || '🍿';
+            if (inputEmojiCustom) inputEmojiCustom.value = cat.icono || '🍿';
             iconoEditarCatSeleccionado = cat.icono || '🍿';
 
             const gridEmojis = document.getElementById('selector-iconos-editar-cat');
-            gridEmojis.textContent = '';
+            if (gridEmojis) gridEmojis.textContent = '';
 
             inputEmojiCustom.oninput = (e) => {
                 const val = e.target.value.trim();
@@ -1467,7 +1472,8 @@ if (btnCuenta) {
 
             document.getElementById('modal-editar-cat')?.classList.remove('hidden');
             document.getElementById('modal-editar-cat')?.classList.add('flex');
-            document.getElementById('input-editar-cat-nombre').focus();
+            const inputEditarCatNombre = document.getElementById('input-editar-cat-nombre');
+            if (inputEditarCatNombre) inputEditarCatNombre.focus();
         }
 
         function cerrarModalEditarCategoria() {
@@ -1538,7 +1544,7 @@ if (btnCuenta) {
             else seccionTipo.classList.remove('hidden');
 
             const inputEmojiCustom = document.getElementById('input-emoji-personalizado');
-            inputEmojiCustom.value = listaEmojisPopulares[0];
+            if (inputEmojiCustom) inputEmojiCustom.value = listaEmojisPopulares[0];
             iconoNuevaCatSeleccionado = listaEmojisPopulares[0];
 
             inputEmojiCustom?.addEventListener('input', (e) => {
@@ -1581,7 +1587,8 @@ if (btnCuenta) {
 
             document.getElementById('modal-nueva-cat')?.classList.remove('hidden');
             document.getElementById('modal-nueva-cat')?.classList.add('flex');
-            document.getElementById('input-nueva-cat-nombre').focus();
+            const inputNuevaCatNombre = document.getElementById('input-nueva-cat-nombre');
+            if (inputNuevaCatNombre) inputNuevaCatNombre.focus();
         }
 
         function cerrarModalNuevaCategoria() {
@@ -1862,18 +1869,18 @@ function cerrarModalPlanes() {
             const campoInicio = document.getElementById('campo-mostrar-inicio');
             const campoAcumulado = document.getElementById('campo-monto-acumulado-inicial');
 
-            campoCat.classList.add('hidden');
-            campoPeriodo.classList.add('hidden');
-            campoFechas.classList.add('hidden');
-            campoAuto.classList.add('hidden');
-            campoEmergencia.classList.add('hidden');
-            campoInicio.classList.add('hidden');
-            campoAcumulado.classList.add('hidden');
+            if(campoCat) campoCat.classList.add('hidden');
+            if(campoPeriodo) campoPeriodo.classList.add('hidden');
+            if(campoFechas) campoFechas.classList.add('hidden');
+            if(campoAuto) campoAuto.classList.add('hidden');
+            if(campoEmergencia) campoEmergencia.classList.add('hidden');
+            if(campoInicio) campoInicio.classList.add('hidden');
+            if(campoAcumulado) campoAcumulado.classList.add('hidden');
 
             if (tipo === 'limite') {
-                campoCat.classList.remove('hidden');
-                campoPeriodo.classList.remove('hidden');
-                campoAuto.classList.remove('hidden');
+                if(campoCat) campoCat.classList.remove('hidden');
+                if(campoPeriodo) campoPeriodo.classList.remove('hidden');
+                if(campoAuto) campoAuto.classList.remove('hidden');
 
                 let categorias = JSON.parse(localStorage.getItem('categorias_cache') || '[]');
                 let idsEliminadas = JSON.parse(localStorage.getItem('categorias_eliminadas_ids') || '[]');
@@ -2739,54 +2746,8 @@ if (targetText8) {
     targetText8.textContent = formatearMoneda(totalesCuentas['Transferencia']);
 }
 
-// Envolver la función autoejecutable para que espere de forma obligatoria a que la sesión y la base de datos estén asignadas
-document.addEventListener('DOMContentLoaded', () => {
-    const comprobarYEjecutarPlanes = setInterval(() => {
-        if (typeof db !== 'undefined' && db) {
-            clearInterval(comprobarYEjecutarPlanes);
-            document.addEventListener('DOMContentLoaded', () => {
-    const comprobarYEjecutarPlanes = setInterval(async () => {
-        try {
-            // Validar de forma segura si la variable minificada por Vite ya existe en memoria
-            if (typeof He !== 'undefined' && He) {
-                clearInterval(comprobarYEjecutarPlanes);
-                
-                // Validar si existe una sesión activa antes de interrogar a la base de datos
-                const { data: { session } } = await He.auth.getSession();
-                if (!session) return; // Si está en la bienvenida (sin login), frena aquí limpia y silenciosamente
-
-                const { data: planesData, error } = await He.from('planes').select('*').eq('user_id', session.user.id);
-                if (error) throw error;
-                
-                let totalDeudasPendientes = 0;
-                let totalAhorrosMetas = 0;
-                if (planesData) {
-                    planesData.forEach(p => {
-                        if (p.tipo === 'deuda') {
-                            totalDeudasPendientes += Math.max(0, parseFloat(p.monto) - parseFloat(p.monto_acumulado || 0));
-                        }
-                        if (p.tipo === 'meta') {
-                            totalAhorrosMetas += parseFloat(p.monto_acumulado || 0);
-                        }
-                    });
-                }
-                if (typeof totalesCuentas !== 'undefined' && totalesCuentas) {
-                    const totalEfectivoBancos = totalesCuentas['Efectivo'] + totalesCuentas['Bancos'] + totalesCuentas['Transferencia'];
-                    const patrimonioNeto = (totalEfectivoBancos + totalAhorrosMetas) - totalDeudasPendientes;
-                    const elPatrimonio = document.getElementById('dash-patrimonio-neto');
-                    if (elPatrimonio) elPatrimonio.textContent = formatearMoneda(patrimonioNeto);
-                }
-            }
-        } catch (err) {
-            console.error('[Supabase Error]: Transacción fallida en cálculo de planes', err.message);
-            clearInterval(comprobarYEjecutarPlanes);
-        }
-    }, 100);
-});
-
-        }
-    }, 100);
-});
+// [CISO] Purgado de bucles de inicialización redundantes y variables minificadas corruptas.
+            // La validación del patrimonio se ejecuta mediante promesas limpias en el bloque inferior.
 
 
 
@@ -3252,17 +3213,17 @@ contenedorHistorial.textContent = '';
             });
         });
 
-        // Ejecución forzada sin candados locales para matar el Race Condition Multi-Dispositivo
-        if (navigator.onLine) {
-            sincronizarCategoriasCache();
-        }
-        verificarEstadoSesion();
-        verificarSeguridadBiometrico();
-        comprobarRolloverMes();
+        // Ejecución forzada encapsulada en DOMContentLoaded para inmunidad contra minificación V8
+        document.addEventListener('DOMContentLoaded', () => {
+            if (navigator.onLine && db) {
+                sincronizarCategoriasCache();
+            }
+            if (db) verificarEstadoSesion();
+            verificarSeguridadBiometrico();
+            comprobarRolloverMes();
 
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
+            if ('serviceWorker' in navigator) {
                 navigator.serviceWorker.register('./sw.js')
-                    .catch(err => console.error('Error SW:', err));
-            });
-        }
+                    .catch(err => console.warn('[CISO Guard] Error de registro SW:', err));
+            }
+        });
