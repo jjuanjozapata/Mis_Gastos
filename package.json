@@ -8,9 +8,8 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "npm run approve-scripts && vite build",
-    "preview": "vite preview",
-    "approve-scripts": "npx allow-scripts approve esbuild"
+    "build": "vite build",
+    "preview": "vite preview"
   },
   "repository": {
     "type": "git",
