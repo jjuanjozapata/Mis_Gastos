@@ -75,7 +75,7 @@
             mostrarToast('Moneda actualizada con éxito');
         });
 
-        // [CISO V8-Fix] Elevación de la bandera de memoria para evitar el Temporal Dead Zone (TDZ)
+        // [CISO V8-Fix] Elevación de memoria para erradicar el Temporal Dead Zone (Error 'He')
         let candadoSincronizacionOffline = false;
 
         function actualizarEstadoRed() {
@@ -1926,9 +1926,13 @@ function cerrarModalPlanes() {
 }
 
 
-            document.getElementById('modal-form-plan')?.classList.remove('hidden');
-            document.getElementById('modal-form-plan')?.classList.add('flex');
-            document.getElementById('input-monto-plan').focus();
+            const modalFormPlan = document.getElementById('modal-form-plan');
+            if (modalFormPlan) {
+                modalFormPlan.classList.remove('hidden');
+                modalFormPlan.classList.add('flex');
+            }
+            const inputMontoPlan = document.getElementById('input-monto-plan');
+            if (inputMontoPlan) inputMontoPlan.focus();
         }
 
         document.getElementById('select-periodo-plan')?.addEventListener('change', (e) => {
@@ -3002,7 +3006,7 @@ contenedorHistorial.textContent = '';
             const dTop = document.getElementById('dash-top-cat'); if(dTop) dTop.textContent = ordenados.length > 0 && ordenados[0].gastado > 0 ? ordenados[0].nombre : 'N/A';
 
             const matrizContainer = document.getElementById('matriz-presupuesto-excel');
-            matrizContainer.textContent = '';
+            if (matrizContainer) matrizContainer.textContent = '';
             
             db.auth.getSession().then(({ data, error }) => {
                 if (error) throw error;
@@ -3095,7 +3099,7 @@ contenedorHistorial.textContent = '';
             const labelsGrafico = [];
             const dataGrafico = [];
             const contenedorLista = document.getElementById('lista-presupuestos');
-            contenedorLista.textContent = '';
+            if (contenedorLista) contenedorLista.textContent = '';
 
             if (totalGastado === 0) {
                 renderizarGraficoDonut(['Sin gastos'], [1], formatearMoneda(0), ['#334155']);
