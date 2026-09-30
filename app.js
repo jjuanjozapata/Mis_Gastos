@@ -75,12 +75,19 @@
             mostrarToast('Moneda actualizada con éxito');
         });
 
+        // [CISO V8-Fix] Elevación de la bandera de memoria para evitar el Temporal Dead Zone (TDZ)
+        let candadoSincronizacionOffline = false;
+
         function actualizarEstadoRed() {
             const banner = document.getElementById('network-banner');
-            if (!navigator.onLine) {
-                banner.classList.remove('hidden');
-            } else {
-                banner.classList.add('hidden');
+            if (banner) {
+                if (!navigator.onLine) {
+                    banner.classList.remove('hidden');
+                } else {
+                    banner.classList.add('hidden');
+                }
+            }
+            if (navigator.onLine) {
                 sincronizarColaOffline();
             }
         }
@@ -88,7 +95,6 @@
         window.addEventListener('offline', actualizarEstadoRed);
         actualizarEstadoRed();
 
-        let candadoSincronizacionOffline = false;
         async function sincronizarColaOffline() {
             if (candadoSincronizacionOffline) return;
             
@@ -359,9 +365,12 @@
             }
         });
 
-        db.auth.onAuthStateChange((event, session) => {
-            actualizarUIIngreso(session);
-        });
+        // Null Guard condicional para prevenir bloqueos de renderizado ante caídas del CDN de Supabase
+        if (db && db.auth) {
+            db.auth.onAuthStateChange((event, session) => {
+                actualizarUIIngreso(session);
+            });
+        }
 
         function verificarSeguridadBiometrico() {
             const biomHabilitado = localStorage.getItem('biometrico_activo');
