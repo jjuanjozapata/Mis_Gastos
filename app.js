@@ -917,7 +917,10 @@ let graficoInstancia = null;
             cuentaIndex = (cuentaIndex + 1) % listaCuentas.length;
             cuentaActual = listaCuentas[cuentaIndex];
             localStorage.setItem('cuenta_mis_gastos', cuentaActual);
-            document.getElementById('btn-cuenta')?.textContent = cuentaActual;
+            const btnCuenta = document.getElementById('btn-cuenta');
+if (btnCuenta) {
+    btnCuenta.textContent = cuentaActual;
+}
             if (navigator.vibrate) navigator.vibrate(20);
         });
 
