@@ -3,6 +3,10 @@ import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
   plugins: [tailwindcss()],
+  clearScreen: false,
+  esbuild: {
+    legalComments: 'none'
+  },
   build: {
     rollupOptions: {
       input: {

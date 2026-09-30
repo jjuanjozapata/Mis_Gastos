@@ -1,7 +1,7 @@
 
-// [CISO] Inicialización resiliente y segura con priorización de variables VITE_
-        const SUPABASE_URL = import.meta.env?.VITE_SUPABASE_URL || 'https://znszebnjcgjfzxvnexxd.supabase.co';
-        const SUPABASE_ANON_KEY = import.meta.env?.VITE_SUPABASE_ANON_KEY || window.ENV_SUPABASE_KEY || 'znszebnjcgjfzxvnexxd';
+// [CISO] Inicialización resiliente y segura (Vite AST Safe Parser)
+        const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://znszebnjcgjfzxvnexxd.supabase.co';
+        const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || window.ENV_SUPABASE_KEY || 'znszebnjcgjfzxvnexxd';
         
         let db = null;
         if (typeof window !== 'undefined' && window.supabase && typeof window.supabase.createClient === 'function') {
@@ -689,19 +689,28 @@
         if (btnOmitirRollover) btnOmitirRollover?.addEventListener('click', cerrarModalRollover);
 
         document.getElementById('btn-rollover-ahorro')?.addEventListener('click', async () => {
-            const { data: { session } } = await db.auth.getSession();
-            if (session && ultimoBalanceCalculado > 0) {
-                await db.from('planes').insert([{ 
-                    tipo: 'meta', 
-                    monto: ultimoBalanceCalculado, 
-                    monto_acumulado: ultimoBalanceCalculado,
-                    titulo: 'Rollover Fondo de Emergencia', 
-                    user_id: session.user.id 
-                }]);
-                cargarPlanes();
+            try {
+                const { data, error: errSession } = await db.auth.getSession();
+                if (errSession) throw errSession;
+                
+                const session = data?.session;
+                if (session && ultimoBalanceCalculado > 0) {
+                    const { error: insErr } = await db.from('planes').insert([{ 
+                        tipo: 'meta', 
+                        monto: ultimoBalanceCalculado, 
+                        monto_acumulado: ultimoBalanceCalculado,
+                        titulo: 'Rollover Fondo de Emergencia', 
+                        user_id: session.user.id 
+                    }]);
+                    if (insErr) throw insErr;
+                    cargarPlanes();
+                }
+                cerrarModalRollover();
+                mostrarToast('Saldo trasladado a Ahorro');
+            } catch (error) {
+                console.error('[CISO Security] Bloqueo en ejecución Rollover:', error.message);
+                mostrarToast('Error de conexión. Operación cancelada.', 'error');
             }
-            cerrarModalRollover();
-            mostrarToast('Saldo trasladado a Ahorro');
         });
 
         document.getElementById('btn-rollover-colchon')?.addEventListener('click', () => {
