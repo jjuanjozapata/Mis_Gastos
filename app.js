@@ -1762,7 +1762,10 @@ if (btnCuenta) {
         function cerrarModal() {
             document.getElementById('modal-notas')?.classList.add('hidden');
             document.getElementById('modal-notas')?.classList.remove('flex');
-            document.getElementById('input-notas')?.value = '';
+            const inputNotas = document.getElementById('input-notas');
+if (inputNotas) {
+    inputNotas.value = '';
+}
             categoriaPendiente = null;
         }
 
@@ -1835,16 +1838,24 @@ if (btnCuenta) {
                     opt.textContent = `${c.icono} ${c.nombre}`;
                     selectCat.appendChild(opt);
                 });
+
             } else if (tipo === 'meta') {
-                campoEmergencia.classList.remove('hidden');
-                campoInicio.classList.remove('hidden');
-                campoAcumulado.classList.remove('hidden');
-                document.getElementById('label-acumulado-inicial')?.textContent = 'Ya Ahorrado Inicialmente (Opcional)';
-            } else if (tipo === 'deuda') {
-                campoInicio.classList.remove('hidden');
-                campoAcumulado.classList.remove('hidden');
-                document.getElementById('label-acumulado-inicial')?.textContent = 'Ya Pagado / Amortizado (Opcional)';
-            }
+    campoEmergencia.classList.remove('hidden');
+    campoInicio.classList.remove('hidden');
+    campoAcumulado.classList.remove('hidden');
+    const targetText1 = document.getElementById('label-acumulado-inicial');
+    if (targetText1) {
+        targetText1.textContent = 'Ya Ahorrado Inicialmente (Opcional)';
+    }
+} else if (tipo === 'deuda') {
+    campoInicio.classList.remove('hidden');
+    campoAcumulado.classList.remove('hidden');
+    const targetText2 = document.getElementById('label-acumulado-inicial');
+    if (targetText2) {
+        targetText2.textContent = 'Ya Pagado / Amortizado (Opcional)';
+    }
+}
+
 
             document.getElementById('modal-form-plan')?.classList.remove('hidden');
             document.getElementById('modal-form-plan')?.classList.add('flex');
@@ -2437,9 +2448,16 @@ function encolarTransaccionManual(payload) {
                 ahorroAnual = valorSimuladorBase * 12;
             }
 
-            document.getElementById('sim-mensual')?.textContent = formatearMoneda(ahorroMensual);
-            document.getElementById('sim-anual')?.textContent = formatearMoneda(ahorroAnual);
-        }
+                const targetText3 = document.getElementById('sim-mensual');
+    if (targetText3) {
+        targetText3.textContent = formatearMoneda(ahorroMensual);
+    }
+    const targetText4 = document.getElementById('sim-anual');
+    if (targetText4) {
+        targetText4.textContent = formatearMoneda(ahorroAnual);
+    }
+}
+
 
         if (btnSimDiario && btnSimMensual && inputSimValor) {
             btnSimDiario?.addEventListener('click', () => {
@@ -2651,10 +2669,49 @@ function encolarTransaccionManual(payload) {
                 }
             });
 
-            document.getElementById('cuenta-efectivo-val')?.textContent = formatearMoneda(totalesCuentas['Efectivo']);
-            document.getElementById('cuenta-bancos-val')?.textContent = formatearMoneda(totalesCuentas['Bancos']);
-            document.getElementById('cuenta-tarjetas-val')?.textContent = formatearMoneda(totalesCuentas['Tarjetas']);
-            document.getElementById('cuenta-transferencia-val')?.textContent = formatearMoneda(totalesCuentas['Transferencia']);
+            const targetText5 = document.getElementById('cuenta-efectivo-val');
+if (targetText5) {
+    targetText5.textContent = formatearMoneda(totalesCuentas['Efectivo']);
+}
+const targetText6 = document.getElementById('cuenta-bancos-val');
+if (targetText6) {
+    targetText6.textContent = formatearMoneda(totalesCuentas['Bancos']);
+}
+const targetText7 = document.getElementById('cuenta-tarjetas-val');
+if (targetText7) {
+    targetText7.textContent = formatearMoneda(totalesCuentas['Tarjetas']);
+}
+const targetText8 = document.getElementById('cuenta-transferencia-val');
+if (targetText8) {
+    targetText8.textContent = formatearMoneda(totalesCuentas['Transferencia']);
+}
+
+(async () => {
+    try {
+        const { data: planesData, error } = await db.from('planes').select('*').eq('user_id', session.user.id);
+        if (error) throw error;
+        
+        let totalDeudasPendientes = 0;
+        let totalAhorrosMetas = 0;
+        if (planesData) {
+            planesData.forEach(p => {
+                if (p.tipo === 'deuda') {
+                    totalDeudasPendientes += Math.max(0, parseFloat(p.monto) - parseFloat(p.monto_acumulado || 0));
+                }
+                if (p.tipo === 'meta') {
+                    totalAhorrosMetas += parseFloat(p.monto_acumulado || 0);
+                }
+            });
+        }
+        const totalEfectivoBancos = totalesCuentas['Efectivo'] + totalesCuentas['Bancos'] + totalesCuentas['Transferencia'];
+        const patrimonioNeto = (totalEfectivoBancos + totalAhorrosMetas) - totalDeudasPendientes;
+        const elPatrimonio = document.getElementById('dash-patrimonio-neto');
+        if (elPatrimonio) elPatrimonio.textContent = formatearMoneda(patrimonioNeto);
+    } catch (err) {
+        console.error('[Supabase Error]: Transacción fallida en cálculo de planes', err.message);
+    }
+})();
+
 
             db.from('planes').select('*').eq('user_id', session.user.id)
                 .then(({ data: planesData, error }) => {
@@ -3095,10 +3152,14 @@ contenedorHistorial.textContent = '';
         }
 
         document.querySelectorAll('.sug-nota-chip').forEach(btn => {
-            btn?.addEventListener('click', (e) => {
-                document.getElementById('input-notas')?.value = e.target.textContent;
-            });
-        });
+    btn?.addEventListener('click', (e) => {
+        const targetInput9 = document.getElementById('input-notas');
+        if (targetInput9) {
+            targetInput9.value = e.target.textContent;
+        }
+    });
+});
+
 
         document.querySelectorAll('.btn-tema').forEach(btn => {
             btn?.addEventListener('click', (e) => {
