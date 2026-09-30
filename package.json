@@ -1,28 +1,35 @@
 {
   "name": "mis-gastos",
   "version": "1.0.0",
-  "description": "",
+  "description": "Progressive Web App - Mis Gastos",
   "main": "sw.js",
   "engines": {
-    "node": "^20.19.0 || >=22.12.0"
+    "node": "22.x"
   },
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "build": "npm run approve-scripts && vite build",
+    "preview": "vite preview",
+    "approve-scripts": "npx allow-scripts approve esbuild"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/jjuanjozapata/Mis-Gastos.git"
+    "url": "git+https://github.com"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": [
+    "pwa",
+    "vite",
+    "supabase",
+    "serverless",
+    "expense-tracker"
+  ],
+  "author": "Juanjo Zapata",
   "license": "ISC",
   "type": "module",
   "bugs": {
-    "url": "https://github.com/jjuanjozapata/Mis-Gastos/issues"
+    "url": "https://github.com"
   },
-  "homepage": "https://github.com/jjuanjozapata/Mis-Gastos#readme",
+  "homepage": "https://github.com",
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.0",
     "autoprefixer": "^10.4.20",

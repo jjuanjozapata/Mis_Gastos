@@ -2739,31 +2739,46 @@ if (targetText8) {
     targetText8.textContent = formatearMoneda(totalesCuentas['Transferencia']);
 }
 
-(async () => {
-    try {
-        const { data: planesData, error } = await db.from('planes').select('*').eq('user_id', session.user.id);
-        if (error) throw error;
-        
-        let totalDeudasPendientes = 0;
-        let totalAhorrosMetas = 0;
-        if (planesData) {
-            planesData.forEach(p => {
-                if (p.tipo === 'deuda') {
-                    totalDeudasPendientes += Math.max(0, parseFloat(p.monto) - parseFloat(p.monto_acumulado || 0));
+// Envolver la función autoejecutable para que espere de forma obligatoria a que la sesión y la base de datos estén asignadas
+document.addEventListener('DOMContentLoaded', () => {
+    const comprobarYEjecutarPlanes = setInterval(() => {
+        if (typeof db !== 'undefined' && db) {
+            clearInterval(comprobarYEjecutarPlanes);
+            (async () => {
+                try {
+                    // Verificar existencia de sesión activa antes de interrogar a Supabase para mitigar alertas 401 en bienvenida
+                    const { data: { session } } = await db.auth.getSession();
+                    if (!session) return;
+
+                    const { data: planesData, error } = await db.from('planes').select('*').eq('user_id', session.user.id);
+                    if (error) throw error;
+                    
+                    let totalDeudasPendientes = 0;
+                    let totalAhorrosMetas = 0;
+                    if (planesData) {
+                        planesData.forEach(p => {
+                            if (p.tipo === 'deuda') {
+                                totalDeudasPendientes += Math.max(0, parseFloat(p.monto) - parseFloat(p.monto_acumulado || 0));
+                            }
+                            if (p.tipo === 'meta') {
+                                totalAhorrosMetas += parseFloat(p.monto_acumulado || 0);
+                            }
+                        });
+                    }
+                    if (typeof totalesCuentas !== 'undefined' && totalesCuentas) {
+                        const totalEfectivoBancos = totalesCuentas['Efectivo'] + totalesCuentas['Bancos'] + totalesCuentas['Transferencia'];
+                        const patrimonioNeto = (totalEfectivoBancos + totalAhorrosMetas) - totalDeudasPendientes;
+                        const elPatrimonio = document.getElementById('dash-patrimonio-neto');
+                        if (elPatrimonio) elPatrimonio.textContent = formatearMoneda(patrimonioNeto);
+                    }
+                } catch (err) {
+                    console.error('[Supabase Error]: Transacción fallida en cálculo de planes', err.message);
                 }
-                if (p.tipo === 'meta') {
-                    totalAhorrosMetas += parseFloat(p.monto_acumulado || 0);
-                }
-            });
+            })();
         }
-        const totalEfectivoBancos = totalesCuentas['Efectivo'] + totalesCuentas['Bancos'] + totalesCuentas['Transferencia'];
-        const patrimonioNeto = (totalEfectivoBancos + totalAhorrosMetas) - totalDeudasPendientes;
-        const elPatrimonio = document.getElementById('dash-patrimonio-neto');
-        if (elPatrimonio) elPatrimonio.textContent = formatearMoneda(patrimonioNeto);
-    } catch (err) {
-        console.error('[Supabase Error]: Transacción fallida en cálculo de planes', err.message);
-    }
-})();
+    }, 100);
+});
+
 
 
             db.from('planes').select('*').eq('user_id', session.user.id)
