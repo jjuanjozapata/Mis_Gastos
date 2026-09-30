@@ -5,18 +5,32 @@
         
         let db = null;
         if (typeof window !== 'undefined' && window.supabase && typeof window.supabase.createClient === 'function') {
-            db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-                auth: {
-                    storage: window.localStorage,
-                    autoRefreshToken: true,
-                    persistSession: true
-                }
-            });
+            try {
+                // Validación estricta para atrapar bloqueos de privacidad del navegador (Ej. Modo Incógnito estricto)
+                const storageDisponible = window.localStorage ? window.localStorage : null;
+                db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+                    auth: {
+                        storage: storageDisponible,
+                        autoRefreshToken: true,
+                        persistSession: true
+                    }
+                });
+            } catch (storageErr) {
+                console.error('[CISO Guard] Error crítico de permisos en Storage. PWA operará en modo memoria volátil:', storageErr);
+                // Fallback silencioso sin persistencia local, evita el bloqueo de renderizado
+                db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { persistSession: false } });
+            }
         } else {
             console.error('[CISO Guard] Instancia nativa de Supabase no detectada en el objeto global.');
         }
 
-        const escapeHTML = str => str ? DOMPurify.sanitize(String(str), { ALLOWED_TAGS: [], ALLOWED_ATTR: [] }) : '';
+        const escapeHTML = str => {
+            if (!str) return '';
+            if (typeof window !== 'undefined' && window.DOMPurify) {
+                return window.DOMPurify.sanitize(String(str), { ALLOWED_TAGS: [], ALLOWED_ATTR: [] });
+            }
+            return String(str).replace(/[&<>'"]/g, tag => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'}[tag]));
+        };
         
         function leerStorageSeguro(clave, valorPorDefecto) {
             try {
@@ -93,7 +107,9 @@
         }
         window.addEventListener('online', actualizarEstadoRed);
         window.addEventListener('offline', actualizarEstadoRed);
-        actualizarEstadoRed();
+        
+        // [CISO] Desplazado al DOMContentLoaded para evitar fallos de lectura de classList en UI
+        document.addEventListener('DOMContentLoaded', actualizarEstadoRed);
 
         async function sincronizarColaOffline() {
             if (candadoSincronizacionOffline) return;
@@ -133,8 +149,13 @@
                     let planesPendientes = [...queuePlanes];
                     
                     for (let op of queuePlanes) {
+                        // Mitigación de desincronización: Calculamos en tiempo real con el servidor
+                        const { data: planRemoto } = await db.from('planes').select('monto_acumulado').eq('id', op.planId).single();
+                        const baseAcumulado = planRemoto ? parseFloat(planRemoto.monto_acumulado || 0) : 0;
+                        const valorSeguro = op.abono ? (baseAcumulado + op.abono) : op.nuevoAcumulado;
+
                         const { error: errPlan } = await db.from('planes')
-                            .update({ monto_acumulado: op.nuevoAcumulado })
+                            .update({ monto_acumulado: valorSeguro })
                             .eq('id', op.planId)
                             .eq('user_id', session.user.id);
                             
@@ -1348,8 +1369,18 @@ if (btnCuenta) {
                 let categorias = JSON.parse(localStorage.getItem('categorias_cache') || '[]');
                 const catAhorro = categorias.find(c => c.nombre.toLowerCase().includes('ahorro') || c.nombre.toLowerCase().includes('meta')) || categorias[0];
 
+                // Generador pseudoaleatorio criptográfico para fallback y prevención de colisión de Primary Keys
+                const generarIdSeguro = () => {
+                    if (window.crypto && window.crypto.randomUUID) return window.crypto.randomUUID();
+                    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+                        const r = (window.crypto.getRandomValues(new Uint8Array(1))[0] % 16) | 0;
+                        const v = c === 'x' ? r : (r & 0x3 | 0x8);
+                        return v.toString(16);
+                    });
+                };
+
                 const txPayload = {
-                    id: window.crypto && window.crypto.randomUUID ? window.crypto.randomUUID() : Date.now().toString(),
+                    id: generarIdSeguro(),
                     monto: valorAporte,
                     categoria_id: catAhorro ? catAhorro.id : null,
                     cuenta: cuentaActual,
@@ -1762,10 +1793,7 @@ if (btnCuenta) {
             });
         }
 
-        document.getElementById('tab-captura')?.addEventListener('click', () => cambiarTab('captura'));
-        document.getElementById('tab-planes')?.addEventListener('click', () => cambiarTab('planes'));
-        document.getElementById('tab-dashboard')?.addEventListener('click', () => cambiarTab('dashboard'));
-        document.getElementById('tab-ajustes')?.addEventListener('click', () => cambiarTab('ajustes'));
+        // [CISO] Eliminada la duplicación top-level para erradicar llamadas dobles y fugas de memoria
         
         document.addEventListener('DOMContentLoaded', () => {
     try {
@@ -2128,6 +2156,7 @@ function cerrarModalPlanes() {
 
             let payload = null;
             try {
+                if (!db || typeof db.auth === 'undefined') throw new Error('Conexión con la base de datos interrumpida. Guardando offline.');
                 const { data: { session }, error: authError } = await db.auth.getSession();
                 if (authError || !session) {
                     mostrarToast('Debes iniciar sesión para registrar movimientos', 'error');

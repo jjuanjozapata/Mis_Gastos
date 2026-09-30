@@ -4,7 +4,7 @@
   "description": "Progressive Web App - Mis Gastos",
   "main": "sw.js",
   "engines": {
-  "node": "24.x"
+  "node": "22.x"
 },
   "scripts": {
     "dev": "vite",

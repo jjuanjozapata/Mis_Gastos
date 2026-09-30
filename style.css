@@ -8,6 +8,7 @@
             box-sizing: border-box;
             background-color: #020617;
             -webkit-text-size-adjust: 100%;
+            overscroll-behavior: none;
         }
         *, *:before, *:after {
             box-sizing: inherit;

@@ -5,7 +5,10 @@ const ASSETS = [
   '/index.html',
   '/style.css',
   '/app.js',
-  '/manifest.json'
+  '/manifest.json',
+  'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2',
+  'https://cdn.jsdelivr.net/npm/chart.js',
+  'https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js'
 ];
 
 self.addEventListener('install', event => {
@@ -34,7 +37,7 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
   if (event.request.method !== 'GET' || url.protocol === 'chrome-extension:') return;
-  if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') return;
+  // [CISO FIX] Eliminada la restricción de localhost para permitir depuración de PWA offline en entorno de desarrollo.
 
   // API / Transacciones Supabase -> Network First
   if (url.origin.includes('supabase.co')) {
@@ -73,9 +76,9 @@ self.addEventListener('fetch', event => {
           });
         }
         return networkResponse;
-      }).catch(() => {});
+      }).catch(() => { return null; }); // Retorno explícito nulo para manejar la promesa correctamente
       
-      return cachedResponse || networkFetch.then(res => res || new Response('', { status: 408 }));
+      return cachedResponse || networkFetch.then(res => res || new Response('Recurso no disponible offline', { status: 408, statusText: 'Offline' }));
     })
   );
 });
