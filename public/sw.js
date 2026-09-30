@@ -76,9 +76,13 @@ self.addEventListener('fetch', event => {
           });
         }
         return networkResponse;
-      }).catch(() => { return null; }); // Retorno explícito nulo para manejar la promesa correctamente
+      }).catch(() => { return null; });
       
-      return cachedResponse || networkFetch.then(res => res || new Response('Recurso no disponible offline', { status: 408, statusText: 'Offline' }));
+      if (cachedResponse) {
+        event.waitUntil(networkFetch);
+        return cachedResponse;
+      }
+      return networkFetch.then(res => res || new Response('Recurso no disponible offline', { status: 408, statusText: 'Offline' }));
     })
   );
 });

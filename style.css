@@ -43,6 +43,5 @@
         .pb-safe { 
             padding-bottom: 20px !important; 
             padding-bottom: calc(env(safe-area-inset-bottom) + 20px) !important; 
-            min-height: calc(env(safe-area-inset-bottom) + 70px) !important; 
         }
         .pt-safe { padding-top: 24px !important; padding-top: calc(env(safe-area-inset-top) + 24px) !important; }

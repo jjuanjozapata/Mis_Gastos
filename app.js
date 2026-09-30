@@ -1097,7 +1097,7 @@ if (btnCuenta) {
 
         async function sincronizarCategoriasCache() {
             try {
-                if (navigator.onLine) {
+                if (navigator.onLine && db && db.auth) {
                     const { data: { session } } = await db.auth.getSession();
                     // Solo traemos categorías globales (user_id IS NULL) o del usuario actual
                     let query = db.from('categorias').select('*').order('nombre');
@@ -1692,8 +1692,9 @@ if (btnCuenta) {
             const inputNombreRaw = document.getElementById('input-nueva-cat-nombre')?.value.trim();
             const inputEmojiRaw = document.getElementById('input-emoji-personalizado') ? document.getElementById('input-emoji-personalizado')?.value.trim() : iconoNuevaCatSeleccionado;
             
-            const nombre = DOMPurify.sanitize(inputNombreRaw, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] });
-            const iconoFinal = DOMPurify.sanitize(inputEmojiRaw, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] }) || iconoNuevaCatSeleccionado;
+            // [CISO FIX] Uso del proxy estandarizado 'escapeHTML' con fallback resiliente para modo offline
+            const nombre = escapeHTML(inputNombreRaw);
+            const iconoFinal = escapeHTML(inputEmojiRaw) || iconoNuevaCatSeleccionado;
 
             if (!nombre) {
                 mostrarToast('Escribe un nombre seguro para la categoría', 'error');
@@ -2688,7 +2689,7 @@ function encolarTransaccionManual(payload) {
             transaccionesCacheActuales = transacciones;
 
             // 2. Fetch en Segundo Plano (Stale-While-Revalidate)
-            if (navigator.onLine) {
+            if (navigator.onLine && db) {
                 db.from('transacciones')
                     .select('*')
                     .eq('user_id', session.user.id)
@@ -2697,7 +2698,12 @@ function encolarTransaccionManual(payload) {
                     .order('fecha', { ascending: false })
                     .then(({ data, error }) => {
                         if (!error && data) {
-                            localStorage.setItem(`transacciones_cache_${filtro}`, JSON.stringify(data));
+                            try {
+                                localStorage.setItem(`transacciones_cache_${filtro}`, JSON.stringify(data));
+                            } catch (cacheErr) {
+                                console.warn('[CISO Storage Alert] Cuota excedida. Purgando cachés antiguas...', cacheErr);
+                                localStorage.removeItem('transacciones_cache_anio'); // GC de emergencia
+                            }
                             // Si la red trae datos nuevos, actualizamos la memoria y repintamos silenciosamente
                             if (JSON.stringify(data) !== JSON.stringify(cacheGuardada)) {
                                 transaccionesCacheActuales = [...queueFiltrada, ...data].sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
@@ -3046,6 +3052,7 @@ contenedorHistorial.textContent = '';
             const matrizContainer = document.getElementById('matriz-presupuesto-excel');
             if (matrizContainer) matrizContainer.textContent = '';
             
+            if (!db || !db.auth) return;
             db.auth.getSession().then(({ data, error }) => {
                 if (error) throw error;
                 const activeSession = data?.session;
@@ -3183,6 +3190,12 @@ contenedorHistorial.textContent = '';
             }
 
             const ctx = canvasEl.getContext('2d');
+            // [CISO FIX] Cortocircuito de seguridad si el CDN de Chart.js fue bloqueado o no está en caché
+            if (typeof Chart === 'undefined') {
+                canvasEl.parentElement.innerHTML = '<p class="text-xs text-slate-500 text-center py-12 border border-dashed border-slate-800 rounded-2xl w-full">Gráfico no disponible offline</p>';
+                return;
+            }
+            
             graficoInstancia = new Chart(ctx, {
                 type: 'doughnut',
                 data: {
