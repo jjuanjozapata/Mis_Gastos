@@ -1,1 +1,47 @@
 @import "tailwindcss";
+:root { color-scheme: dark; }
+        
+        /* Capa 1 y 2: Viewport Estricto iOS Standalone y Reset Seguro */
+        html {
+            width: 100%;
+            height: 100%;
+            box-sizing: border-box;
+            background-color: #020617;
+            -webkit-text-size-adjust: 100%;
+        }
+        *, *:before, *:after {
+            box-sizing: inherit;
+        }
+        body {
+            width: 100%;
+            /* Uso estricto de min-height para emulación PWA sin salto de viewport */
+            min-height: 100vh;
+            min-height: -webkit-fill-available;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            overscroll-behavior-y: none;
+            position: fixed;
+            inset: 0;
+            -webkit-user-select: none; 
+            user-select: none; 
+        }
+        button, input, select { 
+            touch-action: manipulation; 
+            -webkit-tap-highlight-color: transparent; 
+            font-size: 16px; 
+        }
+        .tab-activa { color: #10b981; }
+        .tab-inactiva { color: #64748b; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        select option { background-color: #0f172a; color: #f8fafc; }
+        .tabular-nums { font-variant-numeric: tabular-nums; }
+        
+        /* Gestión Píxel-Perfect de Áreas Seguras (Isla Dinámica y Home Indicator) */
+        .pb-safe { 
+            padding-bottom: 20px !important; 
+            padding-bottom: calc(env(safe-area-inset-bottom) + 20px) !important; 
+            min-height: calc(env(safe-area-inset-bottom) + 70px) !important; 
+        }
+        .pt-safe { padding-top: 24px !important; padding-top: calc(env(safe-area-inset-top) + 24px) !important; }
