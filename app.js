@@ -2744,37 +2744,46 @@ document.addEventListener('DOMContentLoaded', () => {
     const comprobarYEjecutarPlanes = setInterval(() => {
         if (typeof db !== 'undefined' && db) {
             clearInterval(comprobarYEjecutarPlanes);
-            (async () => {
-                try {
-                    // Verificar existencia de sesión activa antes de interrogar a Supabase para mitigar alertas 401 en bienvenida
-                    const { data: { session } } = await db.auth.getSession();
-                    if (!session) return;
+            document.addEventListener('DOMContentLoaded', () => {
+    const comprobarYEjecutarPlanes = setInterval(async () => {
+        try {
+            // Validar de forma segura si la variable minificada por Vite ya existe en memoria
+            if (typeof He !== 'undefined' && He) {
+                clearInterval(comprobarYEjecutarPlanes);
+                
+                // Validar si existe una sesión activa antes de interrogar a la base de datos
+                const { data: { session } } = await He.auth.getSession();
+                if (!session) return; // Si está en la bienvenida (sin login), frena aquí limpia y silenciosamente
 
-                    const { data: planesData, error } = await db.from('planes').select('*').eq('user_id', session.user.id);
-                    if (error) throw error;
-                    
-                    let totalDeudasPendientes = 0;
-                    let totalAhorrosMetas = 0;
-                    if (planesData) {
-                        planesData.forEach(p => {
-                            if (p.tipo === 'deuda') {
-                                totalDeudasPendientes += Math.max(0, parseFloat(p.monto) - parseFloat(p.monto_acumulado || 0));
-                            }
-                            if (p.tipo === 'meta') {
-                                totalAhorrosMetas += parseFloat(p.monto_acumulado || 0);
-                            }
-                        });
-                    }
-                    if (typeof totalesCuentas !== 'undefined' && totalesCuentas) {
-                        const totalEfectivoBancos = totalesCuentas['Efectivo'] + totalesCuentas['Bancos'] + totalesCuentas['Transferencia'];
-                        const patrimonioNeto = (totalEfectivoBancos + totalAhorrosMetas) - totalDeudasPendientes;
-                        const elPatrimonio = document.getElementById('dash-patrimonio-neto');
-                        if (elPatrimonio) elPatrimonio.textContent = formatearMoneda(patrimonioNeto);
-                    }
-                } catch (err) {
-                    console.error('[Supabase Error]: Transacción fallida en cálculo de planes', err.message);
+                const { data: planesData, error } = await He.from('planes').select('*').eq('user_id', session.user.id);
+                if (error) throw error;
+                
+                let totalDeudasPendientes = 0;
+                let totalAhorrosMetas = 0;
+                if (planesData) {
+                    planesData.forEach(p => {
+                        if (p.tipo === 'deuda') {
+                            totalDeudasPendientes += Math.max(0, parseFloat(p.monto) - parseFloat(p.monto_acumulado || 0));
+                        }
+                        if (p.tipo === 'meta') {
+                            totalAhorrosMetas += parseFloat(p.monto_acumulado || 0);
+                        }
+                    });
                 }
-            })();
+                if (typeof totalesCuentas !== 'undefined' && totalesCuentas) {
+                    const totalEfectivoBancos = totalesCuentas['Efectivo'] + totalesCuentas['Bancos'] + totalesCuentas['Transferencia'];
+                    const patrimonioNeto = (totalEfectivoBancos + totalAhorrosMetas) - totalDeudasPendientes;
+                    const elPatrimonio = document.getElementById('dash-patrimonio-neto');
+                    if (elPatrimonio) elPatrimonio.textContent = formatearMoneda(patrimonioNeto);
+                }
+            }
+        } catch (err) {
+            console.error('[Supabase Error]: Transacción fallida en cálculo de planes', err.message);
+            clearInterval(comprobarYEjecutarPlanes);
+        }
+    }, 100);
+});
+
         }
     }, 100);
 });
