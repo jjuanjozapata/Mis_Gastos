@@ -1742,48 +1742,101 @@ if (btnCuenta) {
         document.getElementById('tab-dashboard')?.addEventListener('click', () => cambiarTab('dashboard'));
         document.getElementById('tab-ajustes')?.addEventListener('click', () => cambiarTab('ajustes'));
         
-        document.getElementById('filtro-tiempo')?.addEventListener('change', (e) => {
-            const selectorMes = document.getElementById('selector-mes-excel');
-            if (e.target.value === 'mes') {
-                selectorMes.classList.remove('hidden');
-            } else {
-                selectorMes.classList.add('hidden');
+        document.addEventListener('DOMContentLoaded', () => {
+    try {
+        if (typeof db === 'undefined' || !db) {
+            console.warn("Supabase (db) aún no inicializado durante asignación de eventos globales.");
+        }
+
+        document.getElementById('tab-captura')?.addEventListener('click', () => cambiarTab('captura'));
+        document.getElementById('tab-planes')?.addEventListener('click', () => cambiarTab('planes'));
+        document.getElementById('tab-dashboard')?.addEventListener('click', () => cambiarTab('dashboard'));
+        document.getElementById('tab-ajustes')?.addEventListener('click', () => cambiarTab('ajustes'));
+        
+        document.getElementById('filtro-tiempo')?.addEventListener('change', async (e) => {
+            try {
+                if (typeof db === 'undefined' || !db) {
+                    throw new Error("Cliente Supabase no disponible para cargar estadísticas.");
+                }
+                const selectorMes = document.getElementById('selector-mes-excel');
+                if (selectorMes) {
+                    if (e.target.value === 'mes') {
+                        selectorMes.classList.remove('hidden');
+                    } else {
+                        selectorMes.classList.add('hidden');
+                    }
+                }
+                await cargarEstadisticas();
+            } catch (error) {
+                console.error("Error en evento filtro-tiempo:", error);
             }
-            cargarEstadisticas();
         });
-
-        function abrirModal(catId) {
-            categoriaPendiente = catId;
-            const modal = document.getElementById('modal-notas');
-            modal.classList.remove('hidden'); modal.classList.add('flex');
-            document.getElementById('input-notas').focus();
-        }
-
-        function cerrarModal() {
-            document.getElementById('modal-notas')?.classList.add('hidden');
-            document.getElementById('modal-notas')?.classList.remove('flex');
-            const inputNotas = document.getElementById('input-notas');
-if (inputNotas) {
-    inputNotas.value = '';
-}
-            categoriaPendiente = null;
-        }
-
         document.getElementById('btn-cancelar-notas')?.addEventListener('click', cerrarModal);
-        document.getElementById('btn-guardar-notas')?.addEventListener('click', () => {
-            guardarTransaccion(categoriaPendiente, document.getElementById('input-notas')?.value.trim());
-            cerrarModal();
+        
+        document.getElementById('btn-guardar-notas')?.addEventListener('click', async () => {
+            try {
+                if (typeof db === 'undefined' || !db) {
+                    throw new Error("Cliente Supabase no disponible al guardar transacción.");
+                }
+                await guardarTransaccion(categoriaPendiente, document.getElementById('input-notas')?.value.trim());
+                cerrarModal();
+            } catch (error) {
+                console.error("Error en evento btn-guardar-notas:", error);
+            }
         });
+        document.getElementById('btn-fab-plan')?.addEventListener('click', abrirModalPlanes);
+        document.getElementById('btn-cancelar-planes')?.addEventListener('click', cerrarModalPlanes);
+        
+        document.getElementById('btn-crear-limite')?.addEventListener('click', () => abrirFormularioPlan('limite'));
+        document.getElementById('btn-crear-meta')?.addEventListener('click', () => abrirFormularioPlan('meta'));
+        document.getElementById('btn-crear-deuda')?.addEventListener('click', () => abrirFormularioPlan('deuda'));
+    } catch (err) {
+        console.error("Error crítico de inicialización de UI:", err);
+    }
+});
 
-        function abrirModalPlanes() {
-            document.getElementById('modal-tipo-plan')?.classList.remove('hidden');
-            document.getElementById('modal-tipo-plan')?.classList.add('flex');
-        }
+function abrirModal(catId) {
+    categoriaPendiente = catId;
+    const modal = document.getElementById('modal-notas');
+    if (modal) {
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+    }
+    const inputNotas = document.getElementById('input-notas');
+    if (inputNotas) {
+        inputNotas.focus();
+    }
+}
 
-        function cerrarModalPlanes() {
-            document.getElementById('modal-tipo-plan')?.classList.add('hidden');
-            document.getElementById('modal-tipo-plan')?.classList.remove('flex');
-        }
+function cerrarModal() {
+    const modalNotas = document.getElementById('modal-notas');
+    if (modalNotas) {
+        modalNotas.classList.add('hidden');
+        modalNotas.classList.remove('flex');
+    }
+    const inputNotas = document.getElementById('input-notas');
+    if (inputNotas) {
+        inputNotas.value = '';
+    }
+    categoriaPendiente = null;
+}
+
+function abrirModalPlanes() {
+    const modalTipoPlan = document.getElementById('modal-tipo-plan');
+    if (modalTipoPlan) {
+        modalTipoPlan.classList.remove('hidden');
+        modalTipoPlan.classList.add('flex');
+    }
+}
+
+function cerrarModalPlanes() {
+    const modalTipoPlan = document.getElementById('modal-tipo-plan');
+    if (modalTipoPlan) {
+        modalTipoPlan.classList.add('hidden');
+        modalTipoPlan.classList.remove('flex');
+    }
+}
+
 
         document.getElementById('btn-fab-plan')?.addEventListener('click', abrirModalPlanes);
         document.getElementById('btn-cancelar-planes')?.addEventListener('click', cerrarModalPlanes);
