@@ -279,11 +279,22 @@ const createNoopDb = () => ({
             }
         }
            
-        async function verificarEstadoSesion() {
+        async function obtenerSesionAutenticada() {
             try {
+                if (!db || !db.auth) return null;
                 const { data: sessionData, error: sessionError } = await db.auth.getSession();
                 if (sessionError) throw sessionError;
-                actualizarUIIngreso(sessionData?.session || null);
+                return sessionData?.session || null;
+            } catch (error) {
+                console.warn('[CISO Guard] No se pudo recuperar la sesión activa:', error.message);
+                return null;
+            }
+        }
+
+        async function verificarEstadoSesion() {
+            try {
+                const sessionData = await obtenerSesionAutenticada();
+                actualizarUIIngreso(sessionData || null);
             } catch (error) {
                 console.warn('[CISO Security Guard] Red inestable al validar sesión inicial:', error.message);
                 actualizarUIIngreso(null);
@@ -1192,34 +1203,27 @@ if (btnCuenta) {
 
         async function sincronizarCategoriasCache() {
             try {
-                if (navigator.onLine && db && db.auth) {
-                    const { data: { session } } = await db.auth.getSession();
-                    // Solo traemos categorías globales (user_id IS NULL) o del usuario actual
-                    let query = db.from('categorias').select('*').order('nombre');
-                    if (session) {
-                        query = query.or(`user_id.is.null,user_id.eq.${session.user.id}`);
-                    } else {
-                        query = query.is('user_id', null);
-                    }
-                    
-                    const { data: queryData, error: queryError } = await query;
-                    
-                    if (!queryError && queryData) {
-                        let idsEliminadas = JSON.parse(localStorage.getItem('categorias_eliminadas_ids') || '[]');
-                        
-                        // [INYECCIÓN] Deduplicación asimétrica para bloquear duplicados en dispositivos nuevos
-                        const mapaUnicas = new Map();
-                        [...queryData]
-                            .sort((a, b) => (b.user_id ? 1 : 0) - (a.user_id ? 1 : 0)) // Prioridad a categoría de usuario
-                            .forEach(c => {
-                                const hash = c.nombre.toLowerCase().trim();
-                                if (!mapaUnicas.has(hash)) mapaUnicas.set(hash, c);
-                            });
-                        const categoriasDeduplicadas = Array.from(mapaUnicas.values());
+                if (!navigator.onLine || !db || !db.auth) return;
+                const session = await obtenerSesionAutenticada();
+                if (!session) return;
 
-                        const categoriasFiltradas = categoriasDeduplicadas.filter(c => !idsEliminadas.includes(c.id));
-                        localStorage.setItem('categorias_cache', JSON.stringify(categoriasFiltradas));
-                    }
+                let query = db.from('categorias').select('*').order('nombre');
+                query = query.or(`user_id.is.null,user_id.eq.${session.user.id}`);
+
+                const { data: queryData, error: queryError } = await query;
+
+                if (!queryError && queryData) {
+                    let idsEliminadas = JSON.parse(localStorage.getItem('categorias_eliminadas_ids') || '[]');
+                    const mapaUnicas = new Map();
+                    [...queryData]
+                        .sort((a, b) => (b.user_id ? 1 : 0) - (a.user_id ? 1 : 0))
+                        .forEach(c => {
+                            const hash = c.nombre.toLowerCase().trim();
+                            if (!mapaUnicas.has(hash)) mapaUnicas.set(hash, c);
+                        });
+                    const categoriasDeduplicadas = Array.from(mapaUnicas.values());
+                    const categoriasFiltradas = categoriasDeduplicadas.filter(c => !idsEliminadas.includes(c.id));
+                    localStorage.setItem('categorias_cache', JSON.stringify(categoriasFiltradas));
                 }
             } catch (err) {
                 console.warn('Sincronización de categorías omitida por estado offline o error.');
@@ -1228,8 +1232,9 @@ if (btnCuenta) {
 
         async function renderizarCategoriasFlujo() {
             const contenedor = document.getElementById('flujo-categorias-container');
+            if (!contenedor) return;
             contenedor.textContent = '';
-            const { data: { session } } = await db.auth.getSession();
+            const session = await obtenerSesionAutenticada();
 
             if (tipoActual === 'meta' || tipoActual === 'deuda') {
                 if (!session) {
@@ -1265,7 +1270,7 @@ if (btnCuenta) {
                         infoSubtexto = `Resta: ${formatearMoneda(resta)}`;
                     }
 
-                    btn.textContent = `
+                    btn.innerHTML = `
                         <div class="flex items-center gap-3">
                             <span class="text-2xl">${icono}</span>
                             <div>
@@ -1289,11 +1294,11 @@ if (btnCuenta) {
             
             categorias = categorias.filter(c => !idsEliminadas.includes(c.id));
 
-            if (navigator.onLine && categorias.length === 0) {
+            if (navigator.onLine && categorias.length === 0 && session && db && db.from) {
                 const { data, error: errCat } = await db.from('categorias').select('*').order('nombre');
-                if (data) { 
-                    categorias = data.filter(c => !idsEliminadas.includes(c.id)); 
-                    localStorage.setItem('categorias_cache', JSON.stringify(categorias)); 
+                if (data) {
+                    categorias = data.filter(c => !idsEliminadas.includes(c.id));
+                    localStorage.setItem('categorias_cache', JSON.stringify(categorias));
                 }
             }
             
@@ -2028,7 +2033,8 @@ function cerrarModalPlanes() {
                 let idsEliminadas = JSON.parse(localStorage.getItem('categorias_eliminadas_ids') || '[]');
                 categorias = categorias.filter(c => !idsEliminadas.includes(c.id));
 
-                if (categorias.length === 0) {
+                const session = await obtenerSesionAutenticada();
+                if (categorias.length === 0 && session && db && db.from) {
                     const { data, error: errCat } = await db.from('categorias').select('*').order('nombre');
                     if (data) categorias = data.filter(c => !idsEliminadas.includes(c.id));
                 }
@@ -2385,7 +2391,7 @@ function encolarTransaccionManual(payload) {
             const procesarYRenderizar = (listaPlanes, listaTrans) => {
                 if(!listaPlanes || listaPlanes.length === 0) {
                     fab.classList.add('hidden');
-                    contenedor.textContent = `
+                    contenedor.innerHTML = `
                     <div class="flex flex-col items-center justify-center h-full text-center mt-12">
                         <div class="w-20 h-20 bg-slate-900 rounded-full flex items-center justify-center border border-slate-800 mb-6 shadow-lg">
                             <span class="text-3xl text-emerald-500 font-light">+</span>
@@ -2476,7 +2482,7 @@ function encolarTransaccionManual(payload) {
 
                     const tarjeta = document.createElement('div');
                     tarjeta.className = "bg-slate-900 p-5 rounded-3xl border border-slate-800 shadow-md relative z-10 w-full transition-transform duration-200 touch-pan-y";
-                    tarjeta.textContent = `
+                    tarjeta.innerHTML = `
                         <div class="flex items-center justify-between mb-3">
                             <div class="flex items-center gap-3">
                                 <div class="w-10 h-10 rounded-full flex items-center justify-center border ${estiloBadge} text-lg">${iconoTipo}</div>
@@ -3182,7 +3188,7 @@ contenedorHistorial.textContent = '';
                             textoEstado = "Sobregiro";
                         }
 
-                        row.textContent = `
+                        row.innerHTML = `
                             <div class="flex justify-between items-center">
                                 <div class="flex items-center gap-2">
                                     <span>${escapeHTML(item.icono)}</span>
@@ -3254,7 +3260,7 @@ contenedorHistorial.textContent = '';
                     
                     const row = document.createElement('div');
                     row.className = "flex justify-between items-center bg-slate-950/50 p-3 rounded-xl border border-slate-800";
-                    row.textContent = `
+                    row.innerHTML = `
                         <div class="flex items-center gap-3">
                             <span class="text-emerald-400 font-bold text-xs">${pct}%</span>
                             <span class="text-sm font-bold text-white">${escapeHTML(item.nombre)}</span>
