@@ -8,14 +8,101 @@ window.supabase = window.supabase || { createClient };
 window.DOMPurify = window.DOMPurify || DOMPurify;
 window.Chart = window.Chart || Chart;
 
+const createSafeStorageProxy = () => {
+    const fallbackStore = new Map();
+
+    try {
+        const storage = window.localStorage;
+        return {
+            getItem(key) {
+                try { return storage.getItem(key); }
+                catch (error) { console.warn('[CISO Guard] localStorage bloqueado en getItem:', error.message); return null; }
+            },
+            setItem(key, value) {
+                try { storage.setItem(key, String(value)); return true; }
+                catch (error) { console.warn('[CISO Guard] localStorage bloqueado en setItem:', error.message); return false; }
+            },
+            removeItem(key) {
+                try { storage.removeItem(key); return true; }
+                catch (error) { console.warn('[CISO Guard] localStorage bloqueado en removeItem:', error.message); return false; }
+            },
+            clear() {
+                try { storage.clear(); return true; }
+                catch (error) { console.warn('[CISO Guard] localStorage bloqueado en clear:', error.message); return false; }
+            },
+            key(index) {
+                try { return storage.key(index); }
+                catch (error) { console.warn('[CISO Guard] localStorage bloqueado en key:', error.message); return null; }
+            },
+            get length() {
+                try { return storage.length; }
+                catch (error) { return 0; }
+            }
+        };
+    } catch (error) {
+        console.warn('[CISO Guard] localStorage no disponible, usando caché volátil:', error.message);
+        return {
+            getItem(key) { return fallbackStore.has(key) ? fallbackStore.get(key) : null; },
+            setItem(key, value) { fallbackStore.set(key, String(value)); return true; },
+            removeItem(key) { fallbackStore.delete(key); return true; },
+            clear() { fallbackStore.clear(); return true; },
+            key(index) { return Array.from(fallbackStore.keys())[index] ?? null; },
+            get length() { return fallbackStore.size; }
+        };
+    }
+};
+
+if (typeof window !== 'undefined') {
+    const safeStorage = createSafeStorageProxy();
+    try {
+        Object.defineProperty(window, 'localStorage', {
+            value: safeStorage,
+            configurable: true,
+            writable: true
+        });
+    } catch (error) {
+        console.warn('[CISO Guard] No fue posible redefinir localStorage:', error.message);
+    }
+}
+
+const createNoopQueryBuilder = () => {
+    const response = { data: [], error: null };
+    const builder = {
+        select() { return builder; },
+        eq() { return builder; },
+        order() { return builder; },
+        single() { return builder; },
+        maybeSingle() { return builder; },
+        insert() { return builder; },
+        update() { return builder; },
+        delete() { return builder; },
+        then(onFulfilled) { return Promise.resolve(response).then(onFulfilled); },
+        catch(onRejected) { return Promise.resolve(response).catch(onRejected); },
+        finally(onFinally) { return Promise.resolve(response).finally(onFinally); }
+    };
+    return builder;
+};
+
+const createNoopDb = () => ({
+    auth: {
+        async getSession() { return { data: { session: null }, error: null }; },
+        async signInAnonymously() { return { data: { session: null }, error: new Error('Supabase no disponible') }; },
+        async signInWithPassword() { return { data: { session: null, user: null }, error: new Error('Supabase no disponible') }; },
+        async signUp() { return { data: { session: null, user: null }, error: new Error('Supabase no disponible') }; },
+        async signOut() { return { error: null }; },
+        async updateUser() { return { data: { user: null }, error: new Error('Supabase no disponible') }; },
+        onAuthStateChange() { return { data: { subscription: { unsubscribe() {} } } }; }
+    },
+    from() { return createNoopQueryBuilder(); }
+});
+
 // [CISO] Inicialización resiliente y segura (Vite AST Safe Parser)
         const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://znszebnjcgjfzxvnexxd.supabase.co';
         const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || window.ENV_SUPABASE_KEY || 'znszebnjcgjfzxvnexxd';
         
-        let db = null;
+        let db = createNoopDb();
         if (typeof window !== 'undefined' && window.supabase && typeof window.supabase.createClient === 'function') {
             try {
-                // Validación estricta para atrapar bloqueos de privacidad del navegador (Ej. Modo Incógnito estricto)
                 const storageDisponible = window.localStorage ? window.localStorage : null;
                 db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
                     auth: {
@@ -26,7 +113,6 @@ window.Chart = window.Chart || Chart;
                 });
             } catch (storageErr) {
                 console.error('[CISO Guard] Error crítico de permisos en Storage. PWA operará en modo memoria volátil:', storageErr);
-                // Fallback silencioso sin persistencia local, evita el bloqueo de renderizado
                 db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { persistSession: false } });
             }
         } else {
@@ -38,7 +124,7 @@ window.Chart = window.Chart || Chart;
             if (typeof window !== 'undefined' && window.DOMPurify) {
                 return window.DOMPurify.sanitize(String(str), { ALLOWED_TAGS: [], ALLOWED_ATTR: [] });
             }
-            return String(str).replace(/[&<>'"]/g, tag => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'}[tag]));
+            return String(str).replace(/[&<>"']/g, tag => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[tag]));
         };
         
         function leerStorageSeguro(clave, valorPorDefecto) {
