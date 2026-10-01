@@ -98,10 +98,12 @@ const createNoopDb = () => ({
 
 // [CISO] Inicialización resiliente y segura (Vite AST Safe Parser)
         const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://znszebnjcgjfzxvnexxd.supabase.co';
-        const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || window.ENV_SUPABASE_KEY || 'znszebnjcgjfzxvnexxd';
+        const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || window.ENV_SUPABASE_KEY || '';
         
         let db = createNoopDb();
-        if (typeof window !== 'undefined' && window.supabase && typeof window.supabase.createClient === 'function') {
+        if (!SUPABASE_ANON_KEY) {
+            console.warn('[CISO Config] Falta VITE_SUPABASE_ANON_KEY. La app continuará en modo local hasta configurar Supabase.');
+        } else if (typeof window !== 'undefined' && window.supabase && typeof window.supabase.createClient === 'function') {
             try {
                 const storageDisponible = window.localStorage ? window.localStorage : null;
                 db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -605,6 +607,7 @@ const createNoopDb = () => ({
 
         function abrirModalGestionarCategorias() {
             const contenedor = document.getElementById('lista-categorias-admin');
+            if (!contenedor) return;
             contenedor.textContent = '';
             let categorias = JSON.parse(localStorage.getItem('categorias_cache') || '[]');
             let idsEliminadas = JSON.parse(localStorage.getItem('categorias_eliminadas_ids') || '[]');
@@ -2973,19 +2976,19 @@ contenedorHistorial.textContent = '';
                     
                     const iconoDiv = document.createElement('div');
                     iconoDiv.className = `w-10 h-10 rounded-full flex items-center justify-center text-lg ${isIngreso ? 'bg-emerald-500/10 text-emerald-400' : 'bg-slate-800 text-slate-300'}`;
-                    iconoDiv.textContent = escapeHTML(cat.icono);
+                    iconoDiv.textContent = cat.icono || '';
                     
                     const textDiv = document.createElement('div');
                     textDiv.className = "flex flex-col";
                     
                     const catSpan = document.createElement('span');
                     catSpan.className = "text-sm font-bold text-white";
-                    catSpan.textContent = t.notas ? escapeHTML(t.notas) : escapeHTML(cat.nombre);
+                    catSpan.textContent = t.notas || cat.nombre || '';
                     
                     const notaSpan = document.createElement('span');
                     notaSpan.className = "text-[10px] text-slate-500 font-medium";
                     const fStr = new Date(t.fecha).toLocaleDateString('es-CO', { day:'numeric', month:'short' });
-                    notaSpan.textContent = `${escapeHTML(cat.nombre)} • ${fStr} • ${escapeHTML(t.cuenta)}`;
+                    notaSpan.textContent = `${cat.nombre || ''} • ${fStr} • ${t.cuenta || ''}`;
                     
                     textDiv.appendChild(catSpan);
                     textDiv.appendChild(notaSpan);
