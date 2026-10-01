@@ -1,88 +1,91 @@
-const CACHE_VERSION = 'v24-prod-secure';
+const CACHE_VERSION = 'v25-prod-secure';
 const CACHE_NAME = `gastos-${CACHE_VERSION}`;
-const ASSETS = [
+const CORE_ASSETS = [
   '/',
   '/index.html',
-  '/style.css',
-  '/app.js',
   '/manifest.json',
-  'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2',
-  'https://cdn.jsdelivr.net/npm/chart.js',
-  'https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js'
+  'https://jsdelivr.net',
+  'https://jsdelivr.net',
+  'https://jsdelivr.net'
 ];
 
-self.addEventListener('install', event => {
+self.addEventListener('install', (event) => {
   self.skipWaiting();
   event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => {
+    caches.open(CACHE_NAME).then((cache) => {
       return Promise.allSettled(
-        ASSETS.map(asset => cache.add(asset).catch(err => {}))
+        CORE_ASSETS.map((asset) => cache.add(new Request(asset, { cache: 'reload' })))
       );
     })
   );
 });
 
-self.addEventListener('activate', event => {
+self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then(keys => Promise.all(
-      keys.map(key => {
-        if (key !== CACHE_NAME) {
-          return caches.delete(key);
-        }
-      })
-    )).then(() => self.clients.claim())
+    caches.keys().then((keys) => {
+      return Promise.all(
+        keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
+      );
+    }).then(() => self.clients.claim())
   );
 });
 
-self.addEventListener('fetch', event => {
-  const url = new URL(event.request.url);
-  if (event.request.method !== 'GET' || url.protocol === 'chrome-extension:') return;
-  // [CISO FIX] Eliminada la restricción de localhost para permitir depuración de PWA offline en entorno de desarrollo.
+self.addEventListener('fetch', (event) => {
+  const { request } = event;
+  const url = new URL(request.url);
 
-  // API / Transacciones Supabase -> Network First
+  if (request.method !== 'GET' || url.protocol === 'chrome-extension:') return;
+
+  // Supabase API -> Network Only con fallback a Cache si existe
   if (url.origin.includes('supabase.co')) {
     event.respondWith(
-      fetch(event.request).catch(async () => {
+      fetch(request).catch(async () => {
         const cache = await caches.open(CACHE_NAME);
-        return await cache.match(event.request);
+        const match = await cache.match(request);
+        return match || new Response(JSON.stringify({ error: 'Offline', data: [] }), {
+          headers: { 'Content-Type': 'application/json' },
+          status: 200
+        });
       })
     );
     return;
   }
-  
-  // Navegación PWA -> Network First fallback a index.html
-  if (event.request.mode === 'navigate') {
+
+  // Navegación HTML -> Network First con validación y fallback a /index.html
+  if (request.mode === 'navigate') {
     event.respondWith(
-      fetch(event.request)
-        .then(response => {
-          const resToCache = response.clone();
-          caches.open(CACHE_NAME).then(cache => {
-            try { cache.put(event.request, resToCache); } catch(e) {}
-          });
+      fetch(request)
+        .then((response) => {
+          if (response && response.ok) {
+            const copy = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+          }
           return response;
         })
-        .catch(() => caches.match('/index.html').then(cachedRes => cachedRes || new Response('Offline', { status: 503 })))
+        .catch(async () => {
+          const cached = await caches.match('/index.html');
+          return cached || new Response('Offline', { status: 503, statusText: 'Service Unavailable' });
+        })
     );
     return;
   }
-  
-  // SWR (Stale-While-Revalidate) para núcleo estático
+
+  // Activos estáticos de Vite (/assets/*) o CDN -> Stale-While-Revalidate
   event.respondWith(
-    caches.match(event.request).then(cachedResponse => {
-      const networkFetch = fetch(event.request).then(networkResponse => {
-        if (networkResponse && networkResponse.ok) {
-          caches.open(CACHE_NAME).then(cache => {
-            try { cache.put(event.request, networkResponse.clone()); } catch(e) {}
-          });
-        }
-        return networkResponse;
-      }).catch(() => { return null; });
-      
-      if (cachedResponse) {
-        event.waitUntil(networkFetch);
-        return cachedResponse;
-      }
-      return networkFetch.then(res => res || new Response('Recurso no disponible offline', { status: 408, statusText: 'Offline' }));
+    caches.match(request).then((cachedResponse) => {
+      const fetchPromise = fetch(request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.ok) {
+            const clone = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+          }
+          return networkResponse;
+        })
+        .catch(() => null);
+
+      return cachedResponse || fetchPromise.then((res) => {
+        return res || new Response('Recurso no disponible offline', { status: 503, statusText: 'Offline' });
+      });
     })
   );
 });
