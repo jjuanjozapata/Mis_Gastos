@@ -1,4 +1,13 @@
 
+import { createClient } from '@supabase/supabase-js';
+import Chart from 'chart.js/auto';
+import createDOMPurify from 'dompurify';
+
+const DOMPurify = createDOMPurify(window);
+window.supabase = window.supabase || { createClient };
+window.DOMPurify = window.DOMPurify || DOMPurify;
+window.Chart = window.Chart || Chart;
+
 // [CISO] Inicialización resiliente y segura (Vite AST Safe Parser)
         const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://znszebnjcgjfzxvnexxd.supabase.co';
         const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || window.ENV_SUPABASE_KEY || 'znszebnjcgjfzxvnexxd';
@@ -508,13 +517,13 @@
             const catsFiltradas = categorias.filter(c => c.tipo === tipoAdminActivo);
 
             if (catsFiltradas.length === 0) {
-                contenedor.textContent = '<p class="text-xs text-slate-500 text-center py-4">No hay categorías en esta sección.</p>';
+                contenedor.innerHTML = '<p class="text-xs text-slate-500 text-center py-4">No hay categorías en esta sección.</p>';
             } else {
                 catsFiltradas.forEach(cat => {
                     const isEditado = cat._editado ? '<span class="ml-2 text-[9px] bg-amber-500/20 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded-full">Pendiente</span>' : '';
                     const item = document.createElement('div');
                     item.className = "flex items-center justify-between p-3 bg-slate-950 rounded-2xl border border-slate-800";
-                    item.textContent = `
+                    item.innerHTML = `
                         <div class="flex items-center gap-3">
                             <span class="text-xl">${escapeHTML(cat.icono)}</span>
                             <div>
@@ -917,7 +926,7 @@ let graficoInstancia = null;
             const toast = document.createElement('div');
             const bgColor = tipo === 'exito' ? 'bg-emerald-500 text-slate-950' : 'bg-red-500 text-white';
             toast.className = `${bgColor} px-4 py-3 rounded-2xl font-bold text-xs shadow-xl pointer-events-auto transform translate-y-2 opacity-0 transition-all duration-300 flex items-center justify-between`;
-            toast.textContent = `<span>${escapeHTML(mensaje)}</span>`;
+            toast.innerHTML = `<span>${escapeHTML(mensaje)}</span>`;
             container.appendChild(toast);
             setTimeout(() => toast.classList.remove('translate-y-2', 'opacity-0'), 10);
             setTimeout(() => {
@@ -1138,7 +1147,7 @@ if (btnCuenta) {
 
             if (tipoActual === 'meta' || tipoActual === 'deuda') {
                 if (!session) {
-                    contenedor.textContent = '<p class="col-span-3 text-center text-xs text-slate-500 py-6">Inicia sesión para gestionar metas y deudas.</p>';
+                    contenedor.innerHTML = '<p class="col-span-3 text-center text-xs text-slate-500 py-6">Inicia sesión para gestionar metas y deudas.</p>';
                     return;
                 }
                 const { data: planes, error: errPlanes } = await db.from('planes')
@@ -1148,7 +1157,7 @@ if (btnCuenta) {
                     .eq('mostrar_en_inicio', true);
 
                 if (!planes || planes.length === 0) {
-                    contenedor.textContent = `<p class="col-span-3 text-center text-xs text-slate-500 py-6">No tienes ${tipoActual === 'meta' ? 'metas' : 'deudas'} marcadas para inicio. Actívalas en la pestaña Planes.</p>`;
+                    contenedor.innerHTML = `<p class="col-span-3 text-center text-xs text-slate-500 py-6">No tienes ${tipoActual === 'meta' ? 'metas' : 'deudas'} marcadas para inicio. Actívalas en la pestaña Planes.</p>`;
                     return;
                 }
 
@@ -1224,7 +1233,7 @@ if (btnCuenta) {
                 btn.className = "btn-flujo-cat flex-1 flex flex-col items-center justify-center p-3 bg-slate-800 rounded-2xl active:bg-emerald-600 active:scale-95 transition-all border border-slate-700 shadow-md min-h-[85px] cursor-pointer";
                 btn.dataset.catid = escapeHTML(cat.id);
                 btn.dataset.catnombre = escapeHTML(cat.nombre);
-                btn.textContent = `<span class="text-2xl mb-2">${escapeHTML(cat.icono)}</span><span class="text-[9px] font-bold text-slate-300 uppercase tracking-wider text-center leading-tight">${escapeHTML(cat.nombre)}</span>`;
+                btn.innerHTML = `<span class="text-2xl mb-2">${escapeHTML(cat.icono)}</span><span class="text-[9px] font-bold text-slate-300 uppercase tracking-wider text-center leading-tight">${escapeHTML(cat.nombre)}</span>`;
                 wrapper.appendChild(btn);
 
                 fragmentoCategorias.appendChild(wrapper);
@@ -1233,7 +1242,7 @@ if (btnCuenta) {
             const btnNuevaCat = document.createElement('button');
             btnNuevaCat.type = "button";
             btnNuevaCat.className = "btn-flujo-nueva flex flex-col items-center justify-center p-3 bg-slate-800/40 rounded-2xl active:bg-slate-700 border border-dashed border-emerald-500/40 shadow-sm min-h-[85px] cursor-pointer";
-            btnNuevaCat.textContent = `<span class="text-2xl mb-1 text-emerald-400 font-light">+</span><span class="text-[9px] font-bold text-emerald-400 uppercase tracking-wider text-center">Nueva</span>`;
+            btnNuevaCat.innerHTML = `<span class="text-2xl mb-1 text-emerald-400 font-light">+</span><span class="text-[9px] font-bold text-emerald-400 uppercase tracking-wider text-center">Nueva</span>`;
             fragmentoCategorias.appendChild(btnNuevaCat);
             
             contenedor.appendChild(fragmentoCategorias);
@@ -1703,7 +1712,7 @@ if (btnCuenta) {
 
             try {
                 btn.disabled = true;
-                btn.textContent = '<span class="animate-pulse">Guardando...</span>';
+                btn.innerHTML = '<span class="animate-pulse">Guardando...</span>';
 
                 const { data: { session }, error: authError } = await db.auth.getSession();
                 if (authError || !session) throw new Error('Sesión no válida. Inicia sesión.');
@@ -1938,7 +1947,7 @@ function cerrarModalPlanes() {
                     if (data) categorias = data.filter(c => !idsEliminadas.includes(c.id));
                 }
                 const selectCat = document.getElementById('select-categoria-plan');
-                selectCat.textContent = '<option value="">-- Elige la categoría --</option>';
+                selectCat.innerHTML = '<option value="">-- Elige la categoría --</option>';
                 categorias.filter(c => c.tipo === 'gasto').forEach(c => {
                     const opt = document.createElement('option');
                     opt.value = c.id;
@@ -2375,7 +2384,7 @@ function encolarTransaccionManual(payload) {
                     const btnDelete = document.createElement('button');
                     btnDelete.type = "button";
                     btnDelete.className = "absolute right-0 top-0 bottom-0 w-24 flex flex-col items-center justify-center text-white font-bold active:bg-red-600 transition-colors cursor-pointer";
-                    btnDelete.textContent = `<span class="text-xl mb-1">🗑️</span><span class="text-[10px] uppercase tracking-wider">Borrar</span>`;
+                    btnDelete.innerHTML = `<span class="text-xl mb-1">🗑️</span><span class="text-[10px] uppercase tracking-wider">Borrar</span>`;
                     btnDelete?.addEventListener('click', () => eliminarPlan(p?.id));
                     wrapper.appendChild(btnDelete);
 
@@ -2850,7 +2859,7 @@ if (!contenedorHistorial) return;
 contenedorHistorial.textContent = '';
 
             if(!transacciones || transacciones.length === 0) {
-                contenedorHistorial.textContent = '<p class="text-slate-500 text-xs text-center py-4">No hay transacciones registradas en este periodo</p>';
+                contenedorHistorial.innerHTML = '<p class="text-slate-500 text-xs text-center py-4">No hay transacciones registradas en este periodo</p>';
                 return;
             }
 
@@ -3247,7 +3256,7 @@ contenedorHistorial.textContent = '';
                 b.className = "btn-acceso-rapido flex items-center gap-1.5 px-3 py-1.5 bg-slate-900/90 border border-slate-800/80 rounded-full text-xs font-semibold text-slate-300 active:scale-95 transition-all shrink-0 cursor-pointer shadow-sm hover:border-emerald-500/40";
                 b.dataset.catid = escapeHTML(cat.id);
                 b.setAttribute('aria-label', `Acceso rápido para registrar gasto en ${escapeHTML(cat.nombre)}`);
-                b.textContent = `<span>${escapeHTML(cat.icono)}</span> <span class="max-w-[90px] truncate">${escapeHTML(cat.nombre)}</span>`;
+                b.innerHTML = `<span>${escapeHTML(cat.icono)}</span> <span class="max-w-[90px] truncate">${escapeHTML(cat.nombre)}</span>`;
                 fragmentoDOM.appendChild(b);
             });
             contenedor.appendChild(fragmentoDOM);
