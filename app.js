@@ -1,12 +1,110 @@
 
+import { createClient } from '@supabase/supabase-js';
+import Chart from 'chart.js/auto';
+import createDOMPurify from 'dompurify';
+
+const DOMPurify = createDOMPurify(window);
+window.supabase = window.supabase || { createClient };
+window.DOMPurify = window.DOMPurify || DOMPurify;
+window.Chart = window.Chart || Chart;
+
+const createSafeStorageProxy = () => {
+    const fallbackStore = new Map();
+
+    try {
+        const storage = window.localStorage;
+        return {
+            getItem(key) {
+                try { return storage.getItem(key); }
+                catch (error) { console.warn('[CISO Guard] localStorage bloqueado en getItem:', error.message); return null; }
+            },
+            setItem(key, value) {
+                try { storage.setItem(key, String(value)); return true; }
+                catch (error) { console.warn('[CISO Guard] localStorage bloqueado en setItem:', error.message); return false; }
+            },
+            removeItem(key) {
+                try { storage.removeItem(key); return true; }
+                catch (error) { console.warn('[CISO Guard] localStorage bloqueado en removeItem:', error.message); return false; }
+            },
+            clear() {
+                try { storage.clear(); return true; }
+                catch (error) { console.warn('[CISO Guard] localStorage bloqueado en clear:', error.message); return false; }
+            },
+            key(index) {
+                try { return storage.key(index); }
+                catch (error) { console.warn('[CISO Guard] localStorage bloqueado en key:', error.message); return null; }
+            },
+            get length() {
+                try { return storage.length; }
+                catch (error) { return 0; }
+            }
+        };
+    } catch (error) {
+        console.warn('[CISO Guard] localStorage no disponible, usando caché volátil:', error.message);
+        return {
+            getItem(key) { return fallbackStore.has(key) ? fallbackStore.get(key) : null; },
+            setItem(key, value) { fallbackStore.set(key, String(value)); return true; },
+            removeItem(key) { fallbackStore.delete(key); return true; },
+            clear() { fallbackStore.clear(); return true; },
+            key(index) { return Array.from(fallbackStore.keys())[index] ?? null; },
+            get length() { return fallbackStore.size; }
+        };
+    }
+};
+
+if (typeof window !== 'undefined') {
+    const safeStorage = createSafeStorageProxy();
+    try {
+        Object.defineProperty(window, 'localStorage', {
+            value: safeStorage,
+            configurable: true,
+            writable: true
+        });
+    } catch (error) {
+        console.warn('[CISO Guard] No fue posible redefinir localStorage:', error.message);
+    }
+}
+
+const createNoopQueryBuilder = () => {
+    const response = { data: [], error: null };
+    const builder = {
+        select() { return builder; },
+        eq() { return builder; },
+        order() { return builder; },
+        single() { return builder; },
+        maybeSingle() { return builder; },
+        insert() { return builder; },
+        update() { return builder; },
+        delete() { return builder; },
+        then(onFulfilled) { return Promise.resolve(response).then(onFulfilled); },
+        catch(onRejected) { return Promise.resolve(response).catch(onRejected); },
+        finally(onFinally) { return Promise.resolve(response).finally(onFinally); }
+    };
+    return builder;
+};
+
+const createNoopDb = () => ({
+    auth: {
+        async getSession() { return { data: { session: null }, error: null }; },
+        async signInAnonymously() { return { data: { session: null }, error: new Error('Supabase no disponible') }; },
+        async signInWithPassword() { return { data: { session: null, user: null }, error: new Error('Supabase no disponible') }; },
+        async signUp() { return { data: { session: null, user: null }, error: new Error('Supabase no disponible') }; },
+        async signOut() { return { error: null }; },
+        async updateUser() { return { data: { user: null }, error: new Error('Supabase no disponible') }; },
+        onAuthStateChange() { return { data: { subscription: { unsubscribe() {} } } }; }
+    },
+    from() { return createNoopQueryBuilder(); }
+});
+
 // [CISO] Inicialización resiliente y segura (Vite AST Safe Parser)
         const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://znszebnjcgjfzxvnexxd.supabase.co';
-        const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || window.ENV_SUPABASE_KEY || 'znszebnjcgjfzxvnexxd';
+        const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || window.ENV_SUPABASE_KEY || '';
         
-        let db = null;
-        if (typeof window !== 'undefined' && window.supabase && typeof window.supabase.createClient === 'function') {
+        let db = createNoopDb();
+        if (!SUPABASE_ANON_KEY) {
+            console.warn('[CISO Config] Falta VITE_SUPABASE_ANON_KEY. La app continuará en modo local hasta configurar Supabase.');
+        } else if (typeof window !== 'undefined' && window.supabase && typeof window.supabase.createClient === 'function') {
             try {
-                // Validación estricta para atrapar bloqueos de privacidad del navegador (Ej. Modo Incógnito estricto)
                 const storageDisponible = window.localStorage ? window.localStorage : null;
                 db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
                     auth: {
@@ -17,7 +115,6 @@
                 });
             } catch (storageErr) {
                 console.error('[CISO Guard] Error crítico de permisos en Storage. PWA operará en modo memoria volátil:', storageErr);
-                // Fallback silencioso sin persistencia local, evita el bloqueo de renderizado
                 db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { persistSession: false } });
             }
         } else {
@@ -29,7 +126,7 @@
             if (typeof window !== 'undefined' && window.DOMPurify) {
                 return window.DOMPurify.sanitize(String(str), { ALLOWED_TAGS: [], ALLOWED_ATTR: [] });
             }
-            return String(str).replace(/[&<>'"]/g, tag => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'}[tag]));
+            return String(str).replace(/[&<>"']/g, tag => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[tag]));
         };
         
         function leerStorageSeguro(clave, valorPorDefecto) {
@@ -184,11 +281,22 @@
             }
         }
            
-        async function verificarEstadoSesion() {
+        async function obtenerSesionAutenticada() {
             try {
+                if (!db || !db.auth) return null;
                 const { data: sessionData, error: sessionError } = await db.auth.getSession();
                 if (sessionError) throw sessionError;
-                actualizarUIIngreso(sessionData?.session || null);
+                return sessionData?.session || null;
+            } catch (error) {
+                console.warn('[CISO Guard] No se pudo recuperar la sesión activa:', error.message);
+                return null;
+            }
+        }
+
+        async function verificarEstadoSesion() {
+            try {
+                const sessionData = await obtenerSesionAutenticada();
+                actualizarUIIngreso(sessionData || null);
             } catch (error) {
                 console.warn('[CISO Security Guard] Red inestable al validar sesión inicial:', error.message);
                 actualizarUIIngreso(null);
@@ -499,6 +607,7 @@
 
         function abrirModalGestionarCategorias() {
             const contenedor = document.getElementById('lista-categorias-admin');
+            if (!contenedor) return;
             contenedor.textContent = '';
             let categorias = JSON.parse(localStorage.getItem('categorias_cache') || '[]');
             let idsEliminadas = JSON.parse(localStorage.getItem('categorias_eliminadas_ids') || '[]');
@@ -508,13 +617,13 @@
             const catsFiltradas = categorias.filter(c => c.tipo === tipoAdminActivo);
 
             if (catsFiltradas.length === 0) {
-                contenedor.textContent = '<p class="text-xs text-slate-500 text-center py-4">No hay categorías en esta sección.</p>';
+                contenedor.innerHTML = '<p class="text-xs text-slate-500 text-center py-4">No hay categorías en esta sección.</p>';
             } else {
                 catsFiltradas.forEach(cat => {
                     const isEditado = cat._editado ? '<span class="ml-2 text-[9px] bg-amber-500/20 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded-full">Pendiente</span>' : '';
                     const item = document.createElement('div');
                     item.className = "flex items-center justify-between p-3 bg-slate-950 rounded-2xl border border-slate-800";
-                    item.textContent = `
+                    item.innerHTML = `
                         <div class="flex items-center gap-3">
                             <span class="text-xl">${escapeHTML(cat.icono)}</span>
                             <div>
@@ -917,7 +1026,7 @@ let graficoInstancia = null;
             const toast = document.createElement('div');
             const bgColor = tipo === 'exito' ? 'bg-emerald-500 text-slate-950' : 'bg-red-500 text-white';
             toast.className = `${bgColor} px-4 py-3 rounded-2xl font-bold text-xs shadow-xl pointer-events-auto transform translate-y-2 opacity-0 transition-all duration-300 flex items-center justify-between`;
-            toast.textContent = `<span>${escapeHTML(mensaje)}</span>`;
+            toast.innerHTML = `<span>${escapeHTML(mensaje)}</span>`;
             container.appendChild(toast);
             setTimeout(() => toast.classList.remove('translate-y-2', 'opacity-0'), 10);
             setTimeout(() => {
@@ -1097,34 +1206,27 @@ if (btnCuenta) {
 
         async function sincronizarCategoriasCache() {
             try {
-                if (navigator.onLine && db && db.auth) {
-                    const { data: { session } } = await db.auth.getSession();
-                    // Solo traemos categorías globales (user_id IS NULL) o del usuario actual
-                    let query = db.from('categorias').select('*').order('nombre');
-                    if (session) {
-                        query = query.or(`user_id.is.null,user_id.eq.${session.user.id}`);
-                    } else {
-                        query = query.is('user_id', null);
-                    }
-                    
-                    const { data: queryData, error: queryError } = await query;
-                    
-                    if (!queryError && queryData) {
-                        let idsEliminadas = JSON.parse(localStorage.getItem('categorias_eliminadas_ids') || '[]');
-                        
-                        // [INYECCIÓN] Deduplicación asimétrica para bloquear duplicados en dispositivos nuevos
-                        const mapaUnicas = new Map();
-                        [...queryData]
-                            .sort((a, b) => (b.user_id ? 1 : 0) - (a.user_id ? 1 : 0)) // Prioridad a categoría de usuario
-                            .forEach(c => {
-                                const hash = c.nombre.toLowerCase().trim();
-                                if (!mapaUnicas.has(hash)) mapaUnicas.set(hash, c);
-                            });
-                        const categoriasDeduplicadas = Array.from(mapaUnicas.values());
+                if (!navigator.onLine || !db || !db.auth) return;
+                const session = await obtenerSesionAutenticada();
+                if (!session) return;
 
-                        const categoriasFiltradas = categoriasDeduplicadas.filter(c => !idsEliminadas.includes(c.id));
-                        localStorage.setItem('categorias_cache', JSON.stringify(categoriasFiltradas));
-                    }
+                let query = db.from('categorias').select('*').order('nombre');
+                query = query.or(`user_id.is.null,user_id.eq.${session.user.id}`);
+
+                const { data: queryData, error: queryError } = await query;
+
+                if (!queryError && queryData) {
+                    let idsEliminadas = JSON.parse(localStorage.getItem('categorias_eliminadas_ids') || '[]');
+                    const mapaUnicas = new Map();
+                    [...queryData]
+                        .sort((a, b) => (b.user_id ? 1 : 0) - (a.user_id ? 1 : 0))
+                        .forEach(c => {
+                            const hash = c.nombre.toLowerCase().trim();
+                            if (!mapaUnicas.has(hash)) mapaUnicas.set(hash, c);
+                        });
+                    const categoriasDeduplicadas = Array.from(mapaUnicas.values());
+                    const categoriasFiltradas = categoriasDeduplicadas.filter(c => !idsEliminadas.includes(c.id));
+                    localStorage.setItem('categorias_cache', JSON.stringify(categoriasFiltradas));
                 }
             } catch (err) {
                 console.warn('Sincronización de categorías omitida por estado offline o error.');
@@ -1133,12 +1235,13 @@ if (btnCuenta) {
 
         async function renderizarCategoriasFlujo() {
             const contenedor = document.getElementById('flujo-categorias-container');
+            if (!contenedor) return;
             contenedor.textContent = '';
-            const { data: { session } } = await db.auth.getSession();
+            const session = await obtenerSesionAutenticada();
 
             if (tipoActual === 'meta' || tipoActual === 'deuda') {
                 if (!session) {
-                    contenedor.textContent = '<p class="col-span-3 text-center text-xs text-slate-500 py-6">Inicia sesión para gestionar metas y deudas.</p>';
+                    contenedor.innerHTML = '<p class="col-span-3 text-center text-xs text-slate-500 py-6">Inicia sesión para gestionar metas y deudas.</p>';
                     return;
                 }
                 const { data: planes, error: errPlanes } = await db.from('planes')
@@ -1148,7 +1251,7 @@ if (btnCuenta) {
                     .eq('mostrar_en_inicio', true);
 
                 if (!planes || planes.length === 0) {
-                    contenedor.textContent = `<p class="col-span-3 text-center text-xs text-slate-500 py-6">No tienes ${tipoActual === 'meta' ? 'metas' : 'deudas'} marcadas para inicio. Actívalas en la pestaña Planes.</p>`;
+                    contenedor.innerHTML = `<p class="col-span-3 text-center text-xs text-slate-500 py-6">No tienes ${tipoActual === 'meta' ? 'metas' : 'deudas'} marcadas para inicio. Actívalas en la pestaña Planes.</p>`;
                     return;
                 }
 
@@ -1170,7 +1273,7 @@ if (btnCuenta) {
                         infoSubtexto = `Resta: ${formatearMoneda(resta)}`;
                     }
 
-                    btn.textContent = `
+                    btn.innerHTML = `
                         <div class="flex items-center gap-3">
                             <span class="text-2xl">${icono}</span>
                             <div>
@@ -1194,11 +1297,11 @@ if (btnCuenta) {
             
             categorias = categorias.filter(c => !idsEliminadas.includes(c.id));
 
-            if (navigator.onLine && categorias.length === 0) {
+            if (navigator.onLine && categorias.length === 0 && session && db && db.from) {
                 const { data, error: errCat } = await db.from('categorias').select('*').order('nombre');
-                if (data) { 
-                    categorias = data.filter(c => !idsEliminadas.includes(c.id)); 
-                    localStorage.setItem('categorias_cache', JSON.stringify(categorias)); 
+                if (data) {
+                    categorias = data.filter(c => !idsEliminadas.includes(c.id));
+                    localStorage.setItem('categorias_cache', JSON.stringify(categorias));
                 }
             }
             
@@ -1224,7 +1327,7 @@ if (btnCuenta) {
                 btn.className = "btn-flujo-cat flex-1 flex flex-col items-center justify-center p-3 bg-slate-800 rounded-2xl active:bg-emerald-600 active:scale-95 transition-all border border-slate-700 shadow-md min-h-[85px] cursor-pointer";
                 btn.dataset.catid = escapeHTML(cat.id);
                 btn.dataset.catnombre = escapeHTML(cat.nombre);
-                btn.textContent = `<span class="text-2xl mb-2">${escapeHTML(cat.icono)}</span><span class="text-[9px] font-bold text-slate-300 uppercase tracking-wider text-center leading-tight">${escapeHTML(cat.nombre)}</span>`;
+                btn.innerHTML = `<span class="text-2xl mb-2">${escapeHTML(cat.icono)}</span><span class="text-[9px] font-bold text-slate-300 uppercase tracking-wider text-center leading-tight">${escapeHTML(cat.nombre)}</span>`;
                 wrapper.appendChild(btn);
 
                 fragmentoCategorias.appendChild(wrapper);
@@ -1233,7 +1336,7 @@ if (btnCuenta) {
             const btnNuevaCat = document.createElement('button');
             btnNuevaCat.type = "button";
             btnNuevaCat.className = "btn-flujo-nueva flex flex-col items-center justify-center p-3 bg-slate-800/40 rounded-2xl active:bg-slate-700 border border-dashed border-emerald-500/40 shadow-sm min-h-[85px] cursor-pointer";
-            btnNuevaCat.textContent = `<span class="text-2xl mb-1 text-emerald-400 font-light">+</span><span class="text-[9px] font-bold text-emerald-400 uppercase tracking-wider text-center">Nueva</span>`;
+            btnNuevaCat.innerHTML = `<span class="text-2xl mb-1 text-emerald-400 font-light">+</span><span class="text-[9px] font-bold text-emerald-400 uppercase tracking-wider text-center">Nueva</span>`;
             fragmentoCategorias.appendChild(btnNuevaCat);
             
             contenedor.appendChild(fragmentoCategorias);
@@ -1703,7 +1806,7 @@ if (btnCuenta) {
 
             try {
                 btn.disabled = true;
-                btn.textContent = '<span class="animate-pulse">Guardando...</span>';
+                btn.innerHTML = '<span class="animate-pulse">Guardando...</span>';
 
                 const { data: { session }, error: authError } = await db.auth.getSession();
                 if (authError || !session) throw new Error('Sesión no válida. Inicia sesión.');
@@ -1933,12 +2036,13 @@ function cerrarModalPlanes() {
                 let idsEliminadas = JSON.parse(localStorage.getItem('categorias_eliminadas_ids') || '[]');
                 categorias = categorias.filter(c => !idsEliminadas.includes(c.id));
 
-                if (categorias.length === 0) {
+                const session = await obtenerSesionAutenticada();
+                if (categorias.length === 0 && session && db && db.from) {
                     const { data, error: errCat } = await db.from('categorias').select('*').order('nombre');
                     if (data) categorias = data.filter(c => !idsEliminadas.includes(c.id));
                 }
                 const selectCat = document.getElementById('select-categoria-plan');
-                selectCat.textContent = '<option value="">-- Elige la categoría --</option>';
+                selectCat.innerHTML = '<option value="">-- Elige la categoría --</option>';
                 categorias.filter(c => c.tipo === 'gasto').forEach(c => {
                     const opt = document.createElement('option');
                     opt.value = c.id;
@@ -2290,7 +2394,7 @@ function encolarTransaccionManual(payload) {
             const procesarYRenderizar = (listaPlanes, listaTrans) => {
                 if(!listaPlanes || listaPlanes.length === 0) {
                     fab.classList.add('hidden');
-                    contenedor.textContent = `
+                    contenedor.innerHTML = `
                     <div class="flex flex-col items-center justify-center h-full text-center mt-12">
                         <div class="w-20 h-20 bg-slate-900 rounded-full flex items-center justify-center border border-slate-800 mb-6 shadow-lg">
                             <span class="text-3xl text-emerald-500 font-light">+</span>
@@ -2375,13 +2479,13 @@ function encolarTransaccionManual(payload) {
                     const btnDelete = document.createElement('button');
                     btnDelete.type = "button";
                     btnDelete.className = "absolute right-0 top-0 bottom-0 w-24 flex flex-col items-center justify-center text-white font-bold active:bg-red-600 transition-colors cursor-pointer";
-                    btnDelete.textContent = `<span class="text-xl mb-1">🗑️</span><span class="text-[10px] uppercase tracking-wider">Borrar</span>`;
+                    btnDelete.innerHTML = `<span class="text-xl mb-1">🗑️</span><span class="text-[10px] uppercase tracking-wider">Borrar</span>`;
                     btnDelete?.addEventListener('click', () => eliminarPlan(p?.id));
                     wrapper.appendChild(btnDelete);
 
                     const tarjeta = document.createElement('div');
                     tarjeta.className = "bg-slate-900 p-5 rounded-3xl border border-slate-800 shadow-md relative z-10 w-full transition-transform duration-200 touch-pan-y";
-                    tarjeta.textContent = `
+                    tarjeta.innerHTML = `
                         <div class="flex items-center justify-between mb-3">
                             <div class="flex items-center gap-3">
                                 <div class="w-10 h-10 rounded-full flex items-center justify-center border ${estiloBadge} text-lg">${iconoTipo}</div>
@@ -2850,7 +2954,7 @@ if (!contenedorHistorial) return;
 contenedorHistorial.textContent = '';
 
             if(!transacciones || transacciones.length === 0) {
-                contenedorHistorial.textContent = '<p class="text-slate-500 text-xs text-center py-4">No hay transacciones registradas en este periodo</p>';
+                contenedorHistorial.innerHTML = '<p class="text-slate-500 text-xs text-center py-4">No hay transacciones registradas en este periodo</p>';
                 return;
             }
 
@@ -2872,19 +2976,19 @@ contenedorHistorial.textContent = '';
                     
                     const iconoDiv = document.createElement('div');
                     iconoDiv.className = `w-10 h-10 rounded-full flex items-center justify-center text-lg ${isIngreso ? 'bg-emerald-500/10 text-emerald-400' : 'bg-slate-800 text-slate-300'}`;
-                    iconoDiv.textContent = escapeHTML(cat.icono);
+                    iconoDiv.textContent = cat.icono || '';
                     
                     const textDiv = document.createElement('div');
                     textDiv.className = "flex flex-col";
                     
                     const catSpan = document.createElement('span');
                     catSpan.className = "text-sm font-bold text-white";
-                    catSpan.textContent = t.notas ? escapeHTML(t.notas) : escapeHTML(cat.nombre);
+                    catSpan.textContent = t.notas || cat.nombre || '';
                     
                     const notaSpan = document.createElement('span');
                     notaSpan.className = "text-[10px] text-slate-500 font-medium";
                     const fStr = new Date(t.fecha).toLocaleDateString('es-CO', { day:'numeric', month:'short' });
-                    notaSpan.textContent = `${escapeHTML(cat.nombre)} • ${fStr} • ${escapeHTML(t.cuenta)}`;
+                    notaSpan.textContent = `${cat.nombre || ''} • ${fStr} • ${t.cuenta || ''}`;
                     
                     textDiv.appendChild(catSpan);
                     textDiv.appendChild(notaSpan);
@@ -3087,7 +3191,7 @@ contenedorHistorial.textContent = '';
                             textoEstado = "Sobregiro";
                         }
 
-                        row.textContent = `
+                        row.innerHTML = `
                             <div class="flex justify-between items-center">
                                 <div class="flex items-center gap-2">
                                     <span>${escapeHTML(item.icono)}</span>
@@ -3159,7 +3263,7 @@ contenedorHistorial.textContent = '';
                     
                     const row = document.createElement('div');
                     row.className = "flex justify-between items-center bg-slate-950/50 p-3 rounded-xl border border-slate-800";
-                    row.textContent = `
+                    row.innerHTML = `
                         <div class="flex items-center gap-3">
                             <span class="text-emerald-400 font-bold text-xs">${pct}%</span>
                             <span class="text-sm font-bold text-white">${escapeHTML(item.nombre)}</span>
@@ -3247,7 +3351,7 @@ contenedorHistorial.textContent = '';
                 b.className = "btn-acceso-rapido flex items-center gap-1.5 px-3 py-1.5 bg-slate-900/90 border border-slate-800/80 rounded-full text-xs font-semibold text-slate-300 active:scale-95 transition-all shrink-0 cursor-pointer shadow-sm hover:border-emerald-500/40";
                 b.dataset.catid = escapeHTML(cat.id);
                 b.setAttribute('aria-label', `Acceso rápido para registrar gasto en ${escapeHTML(cat.nombre)}`);
-                b.textContent = `<span>${escapeHTML(cat.icono)}</span> <span class="max-w-[90px] truncate">${escapeHTML(cat.nombre)}</span>`;
+                b.innerHTML = `<span>${escapeHTML(cat.icono)}</span> <span class="max-w-[90px] truncate">${escapeHTML(cat.nombre)}</span>`;
                 fragmentoDOM.appendChild(b);
             });
             contenedor.appendChild(fragmentoDOM);
